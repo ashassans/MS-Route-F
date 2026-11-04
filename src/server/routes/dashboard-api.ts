@@ -44,6 +44,29 @@ function inferModelDefaults(modelId: string, providerId: string): ModelConfig {
   };
 }
 
+function ensureProviderModelRegistered(modelId: string, provider: ProviderConfig): void {
+  const cleanId = modelId.trim();
+  if (!cleanId) return;
+
+  const existingForProvider = db
+    .getModels()
+    .find((m) => m.providerId === provider.id && (m.id === cleanId || m.apiModelName === cleanId));
+  if (existingForProvider) return;
+
+  const existingGlobal = db.getModel(cleanId);
+  if (!existingGlobal) {
+    db.saveModel(inferModelDefaults(cleanId, provider.id));
+  } else if (existingGlobal.providerId !== provider.id) {
+    const base = inferModelDefaults(cleanId, provider.id);
+    db.saveModel({
+      ...base,
+      id: `${provider.id}:${cleanId}`,
+      displayName: `${cleanId} (${provider.name})`,
+      apiModelName: cleanId,
+    });
+  }
+}
+
 function sanitizeProviderForClient(p: ProviderConfig) {
   const effectiveRaw = resolveProviderApiKey(p);
   return {
@@ -125,11 +148,9 @@ router.post('/providers', (req: Request, res: Response) => {
 
   db.saveProvider(newProvider);
 
-  // Automatically register listed models into Model Registry if not already registered
+  // Automatically register listed models into Model Registry (per provider)
   for (const mId of modelList) {
-    if (!db.getModel(mId)) {
-      db.saveModel(inferModelDefaults(mId, newProvider.id));
-    }
+    ensureProviderModelRegistered(mId, newProvider);
   }
 
   res.json({ success: true, provider: sanitizeProviderForClient(newProvider) });
@@ -165,9 +186,7 @@ router.put('/providers/:id', (req: Request, res: Response) => {
 
   if (Array.isArray(updated.models)) {
     for (const mId of updated.models) {
-      if (mId && !db.getModel(mId)) {
-        db.saveModel(inferModelDefaults(mId, updated.id));
-      }
+      if (mId) ensureProviderModelRegistered(mId, updated);
     }
   }
 
@@ -337,6 +356,16 @@ router.post('/combos', (req: Request, res: Response) => {
     enabled: body.enabled !== false,
   };
   db.saveCombo(newCombo);
+  for (const s of newCombo.steps) {
+    const prov = db.getProvider(s.providerId);
+    if (prov && s.modelId) {
+      if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+        prov.models = [...prov.models, s.modelId];
+        db.saveProvider(prov);
+      }
+      ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ''), prov);
+    }
+  }
   res.json({ success: true, combo: newCombo });
 });
 
@@ -346,6 +375,18 @@ router.put('/combos/:id', (req: Request, res: Response) => {
   if (!existing) return res.status(404).json({ error: 'Combo not found' });
   const updated = { ...existing, ...req.body };
   db.saveCombo(updated);
+  if (Array.isArray(updated.steps)) {
+    for (const s of updated.steps) {
+      const prov = db.getProvider(s.providerId);
+      if (prov && s.modelId) {
+        if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+          prov.models = [...prov.models, s.modelId];
+          db.saveProvider(prov);
+        }
+        ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ''), prov);
+      }
+    }
+  }
   res.json({ success: true, combo: updated });
 });
 

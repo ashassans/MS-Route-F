@@ -10,12 +10,18 @@ import {
 } from 'lucide-react';
 import type { ComboConfig, ComboStrategy, ProviderConfig, ModelConfig } from '../../types/gateway.ts';
 import { readApiJson } from '../../lib/api.ts';
+import {
+  getModelsForProvider,
+  createComboStepForProvider,
+  applyStepProviderChange,
+} from '../../lib/combo-helpers.ts';
 
 interface ComboBuilderViewProps {
   combos: ComboConfig[];
   providers: ProviderConfig[];
   models: ModelConfig[];
   onRefresh: () => void;
+  onNavigate?: (view: string) => void;
 }
 
 export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
@@ -23,6 +29,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
   providers,
   models,
   onRefresh,
+  onNavigate,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCombo, setEditingCombo] = useState<ComboConfig | null>(null);
@@ -30,19 +37,13 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
   const [testResult, setTestResult] = useState<any | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [customModelSteps, setCustomModelSteps] = useState<Record<number, boolean>>({});
 
-  const canBuildCombo = providers.length > 0 && models.length > 0;
+  const canBuildCombo = providers.length > 0;
 
   const getDefaultStep = (providerIndex: number, priority: number) => {
     const prov = providers[providerIndex] || providers[0];
-    const provModels = prov ? models.filter((m) => m.providerId === prov.id) : [];
-    const mod = provModels[0] || models[0];
-    return {
-      providerId: prov?.id || '',
-      modelId: mod?.id || '',
-      weight: 50,
-      priority,
-    };
+    return createComboStepForProvider(prov, providers, models, priority, 50);
   };
 
   const [formData, setFormData] = useState({
@@ -56,9 +57,13 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
   });
 
   const handleOpenAdd = () => {
-    if (!canBuildCombo) return;
+    if (!canBuildCombo) {
+      onNavigate?.('providers');
+      return;
+    }
     setEditingCombo(null);
     setFormError(null);
+    setCustomModelSteps({});
 
     const initialSteps =
       providers.length >= 2
@@ -80,6 +85,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
   const handleOpenEdit = (combo: ComboConfig) => {
     setEditingCombo(combo);
     setFormError(null);
+    setCustomModelSteps({});
     setFormData({
       id: combo.id,
       name: combo.name,
@@ -88,7 +94,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
       timeoutMs: combo.timeoutMs,
       retryAttempts: combo.retryRules?.maxAttempts || 3,
       steps: combo.steps.map((s, idx) => ({
-        providerId: s.providerId,
+        providerId: s.providerId || providers[0]?.id || '',
         modelId: s.modelId,
         weight: s.weight ?? 50,
         priority: s.priority ?? idx + 1,
@@ -98,19 +104,31 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
   };
 
   const handleAddStep = () => {
-    const step = getDefaultStep(0, formData.steps.length + 1);
-    setFormData({
-      ...formData,
-      steps: [...formData.steps, step],
-    });
+    const nextProvIdx = formData.steps.length % Math.max(1, providers.length);
+    const step = getDefaultStep(nextProvIdx, formData.steps.length + 1);
+    setFormData((prev) => ({
+      ...prev,
+      steps: [...prev.steps, step],
+    }));
   };
 
   const handleRemoveStep = (idx: number) => {
     if (formData.steps.length <= 1) return;
-    setFormData({
-      ...formData,
-      steps: formData.steps.filter((_, i) => i !== idx),
+    setCustomModelSteps((prev) => {
+      const next: Record<number, boolean> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const num = Number(k);
+        if (num < idx) next[num] = v;
+        if (num > idx) next[num - 1] = v;
+      });
+      return next;
     });
+    setFormData((prev) => ({
+      ...prev,
+      steps: prev.steps
+        .filter((_, i) => i !== idx)
+        .map((s, i) => ({ ...s, priority: i + 1 })),
+    }));
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -121,9 +139,16 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
       return;
     }
 
-    const hasInvalidStep = formData.steps.some((s) => !s.providerId || !s.modelId);
+    const normalizedSteps = formData.steps.map((s, idx) => ({
+      ...s,
+      providerId: s.providerId.trim(),
+      modelId: s.modelId.trim(),
+      priority: idx + 1,
+    }));
+
+    const hasInvalidStep = normalizedSteps.some((s) => !s.providerId || !s.modelId);
     if (hasInvalidStep) {
-      setFormError('Every step must have a valid Provider and Model selected.');
+      setFormError('Every step must have a valid Provider and Model ID entered.');
       return;
     }
 
@@ -141,7 +166,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
         retryOnTimeout: true,
         retryOnServerError: true,
       },
-      steps: formData.steps,
+      steps: normalizedSteps,
       enabled: true,
     };
 
@@ -201,12 +226,11 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
         </div>
         <button
           onClick={handleOpenAdd}
-          disabled={!canBuildCombo}
-          className="px-4 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs shrink-0 disabled:opacity-50"
-          title={!canBuildCombo ? 'Add at least one provider and model first' : 'Build new combo'}
+          className="px-4 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs shrink-0"
+          title={!canBuildCombo ? 'Add at least one AI provider first' : 'Build new combo'}
         >
           <Plus className="w-4 h-4" />
-          <span>Build New Combo</span>
+          <span>{canBuildCombo ? 'Build New Combo' : 'Add Provider First'}</span>
         </button>
       </div>
 
@@ -220,10 +244,10 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
           <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
             {canBuildCombo
               ? 'Create a multi-step combo to automatically fail over between providers on HTTP 429 rate limits, timeouts, or 5xx errors.'
-              : 'Configure at least one AI provider and model in the Providers tab before building a failover combo pipeline.'}
+              : 'Add at least one AI provider in the Providers tab first so you can select it in your failover combo pipeline.'}
           </p>
-          {canBuildCombo && (
-            <div className="pt-2">
+          <div className="pt-2">
+            {canBuildCombo ? (
               <button
                 onClick={handleOpenAdd}
                 className="px-5 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-bold inline-flex items-center gap-2 transition cursor-pointer"
@@ -231,8 +255,16 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                 <Plus className="w-4 h-4" />
                 <span>Build Your First Combo</span>
               </button>
-            </div>
-          )}
+            ) : (
+              <button
+                onClick={() => onNavigate?.('providers')}
+                className="px-5 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-bold inline-flex items-center gap-2 transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Go to Providers &amp; Add Provider</span>
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -415,23 +447,41 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
               </div>
 
               <div className="space-y-2 pt-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <label className="text-stone-800 font-bold block">
                     Providers in Combo Chain ({formData.steps.length})
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleAddStep}
-                    className="text-xs text-[#205e3b] hover:text-[#133d26] font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Step
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {onNavigate && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsModalOpen(false);
+                          onNavigate('providers');
+                        }}
+                        className="text-[11px] text-stone-500 hover:text-stone-800 underline cursor-pointer"
+                      >
+                        + Connect another provider ({providers.length} available)
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleAddStep}
+                      className="text-xs text-[#205e3b] hover:text-[#133d26] font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Step
+                    </button>
+                  </div>
                 </div>
 
-                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
                   {formData.steps.map((step, idx) => {
-                    const providerModels = models.filter((m) => m.providerId === step.providerId);
-                    const availableModels = providerModels.length > 0 ? providerModels : models;
+                    const providerModels = getModelsForProvider(step.providerId, providers, models);
+                    const isCustomModel = Boolean(customModelSteps[idx]) || providerModels.length === 0;
+                    const selectValue = providerModels.some((m) => m.id === step.modelId)
+                      ? step.modelId
+                      : providerModels[0]?.id || '';
+
                     return (
                       <div
                         key={idx}
@@ -445,41 +495,97 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                           <div>
                             <label className="text-[10px] text-stone-500 block mb-0.5 font-medium">Provider</label>
                             <select
+                              aria-label={`Provider for step ${idx + 1}`}
                               value={step.providerId}
                               onChange={(e) => {
-                                const updated = [...formData.steps];
-                                updated[idx].providerId = e.target.value;
-                                const pModels = models.filter((m) => m.providerId === e.target.value);
-                                if (pModels.length > 0) updated[idx].modelId = pModels[0].id;
-                                setFormData({ ...formData, steps: updated });
+                                const nextProvId = e.target.value;
+                                setCustomModelSteps((prev) => ({ ...prev, [idx]: false }));
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  steps: applyStepProviderChange(prev.steps, idx, nextProvId, providers, models),
+                                }));
                               }}
-                              className="w-full bg-white border border-[#e4ded5] rounded-lg px-2 py-1.5 text-stone-800"
+                              className="w-full bg-white border border-[#e4ded5] rounded-lg px-2 py-1.5 text-stone-800 cursor-pointer"
                             >
                               {providers.map((p) => (
                                 <option key={p.id} value={p.id}>
-                                  {p.name}
+                                  {p.name}{!p.enabled ? ' (Disabled)' : ''}
                                 </option>
                               ))}
                             </select>
                           </div>
 
                           <div>
-                            <label className="text-[10px] text-stone-500 block mb-0.5 font-medium">Model</label>
-                            <select
-                              value={step.modelId}
-                              onChange={(e) => {
-                                const updated = [...formData.steps];
-                                updated[idx].modelId = e.target.value;
-                                setFormData({ ...formData, steps: updated });
-                              }}
-                              className="w-full bg-white border border-[#e4ded5] rounded-lg px-2 py-1.5 text-stone-800 font-mono text-[11px]"
-                            >
-                              {availableModels.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.displayName}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <label className="text-[10px] text-stone-500 font-medium">Model</label>
+                              {providerModels.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCustomModelSteps((prev) => {
+                                      const nextCustom = !prev[idx];
+                                      if (!nextCustom && providerModels[0]) {
+                                        setFormData((f) => ({
+                                          ...f,
+                                          steps: f.steps.map((s, i) =>
+                                            i === idx ? { ...s, modelId: providerModels[0].id } : s
+                                          ),
+                                        }));
+                                      }
+                                      return { ...prev, [idx]: nextCustom };
+                                    })
+                                  }
+                                  className="text-[10px] text-[#205e3b] hover:underline cursor-pointer"
+                                >
+                                  {isCustomModel ? 'Select list' : 'Custom ID'}
+                                </button>
+                              )}
+                            </div>
+
+                            {isCustomModel ? (
+                              <input
+                                type="text"
+                                aria-label={`Model for step ${idx + 1}`}
+                                value={step.modelId}
+                                placeholder="e.g. gpt-4o or MiniMaxAI/MiniMax-M2.7"
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    steps: prev.steps.map((s, i) => (i === idx ? { ...s, modelId: val } : s)),
+                                  }));
+                                }}
+                                className="w-full bg-white border border-[#e4ded5] rounded-lg px-2 py-1.5 text-stone-800 font-mono text-[11px]"
+                              />
+                            ) : (
+                              <select
+                                aria-label={`Model for step ${idx + 1}`}
+                                value={selectValue}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '__custom__') {
+                                    setCustomModelSteps((prev) => ({ ...prev, [idx]: true }));
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      steps: prev.steps.map((s, i) => (i === idx ? { ...s, modelId: '' } : s)),
+                                    }));
+                                    return;
+                                  }
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    steps: prev.steps.map((s, i) => (i === idx ? { ...s, modelId: val } : s)),
+                                  }));
+                                }}
+                                className="w-full bg-white border border-[#e4ded5] rounded-lg px-2 py-1.5 text-stone-800 font-mono text-[11px] cursor-pointer"
+                              >
+                                {providerModels.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.displayName}
+                                  </option>
+                                ))}
+                                <option value="__custom__">+ Type custom model ID...</option>
+                              </select>
+                            )}
                           </div>
 
                           {formData.strategy === 'weighted' && (
@@ -487,13 +593,16 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                               <label className="text-[10px] text-stone-500 block mb-0.5 font-medium">Weight %</label>
                               <input
                                 type="number"
+                                aria-label={`Weight for step ${idx + 1}`}
                                 min="1"
                                 max="100"
                                 value={step.weight}
                                 onChange={(e) => {
-                                  const updated = [...formData.steps];
-                                  updated[idx].weight = Number(e.target.value);
-                                  setFormData({ ...formData, steps: updated });
+                                  const val = Number(e.target.value);
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    steps: prev.steps.map((s, i) => (i === idx ? { ...s, weight: val } : s)),
+                                  }));
                                 }}
                                 className="w-full bg-white border border-[#e4ded5] rounded-lg px-2 py-1.5 text-stone-800 font-mono"
                               />
@@ -504,6 +613,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                         {formData.steps.length > 1 && (
                           <button
                             type="button"
+                            aria-label={`Remove step ${idx + 1}`}
                             onClick={() => handleRemoveStep(idx)}
                             className="p-1.5 text-stone-400 hover:text-rose-600 transition cursor-pointer"
                           >

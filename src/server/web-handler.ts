@@ -87,6 +87,29 @@ function inferModelDefaults(modelId: string, providerId: string): ModelConfig {
   };
 }
 
+function ensureProviderModelRegistered(modelId: string, provider: ProviderConfig): void {
+  const cleanId = modelId.trim();
+  if (!cleanId) return;
+
+  const existingForProvider = db
+    .getModels()
+    .find((m) => m.providerId === provider.id && (m.id === cleanId || m.apiModelName === cleanId));
+  if (existingForProvider) return;
+
+  const existingGlobal = db.getModel(cleanId);
+  if (!existingGlobal) {
+    db.saveModel(inferModelDefaults(cleanId, provider.id));
+  } else if (existingGlobal.providerId !== provider.id) {
+    const base = inferModelDefaults(cleanId, provider.id);
+    db.saveModel({
+      ...base,
+      id: `${provider.id}:${cleanId}`,
+      displayName: `${cleanId} (${provider.name})`,
+      apiModelName: cleanId,
+    });
+  }
+}
+
 function sanitizeProviderForClient(p: ProviderConfig) {
   const effectiveRaw = resolveProviderApiKey(p);
   return {
@@ -275,9 +298,7 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
         db.saveProvider(newProvider);
 
         for (const mId of modelList) {
-          if (!db.getModel(mId)) {
-            db.saveModel(inferModelDefaults(mId, newProvider.id));
-          }
+          ensureProviderModelRegistered(mId, newProvider);
         }
 
         return jsonResponse({ success: true, provider: sanitizeProviderForClient(newProvider) });
@@ -360,9 +381,7 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
           db.saveProvider(updated);
           if (Array.isArray(updated.models)) {
             for (const mId of updated.models) {
-              if (mId && !db.getModel(mId)) {
-                db.saveModel(inferModelDefaults(mId, updated.id));
-              }
+              if (mId) ensureProviderModelRegistered(mId, updated);
             }
           }
 
@@ -483,6 +502,16 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
           enabled: body.enabled !== false,
         };
         db.saveCombo(newCombo);
+        for (const s of newCombo.steps) {
+          const prov = db.getProvider(s.providerId);
+          if (prov && s.modelId) {
+            if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+              prov.models = [...prov.models, s.modelId];
+              db.saveProvider(prov);
+            }
+            ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ''), prov);
+          }
+        }
         return jsonResponse({ success: true, combo: newCombo });
       }
 
@@ -526,6 +555,18 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
           const body = await readJsonBody(request);
           const updated = { ...existing, ...body };
           db.saveCombo(updated);
+          if (Array.isArray(updated.steps)) {
+            for (const s of updated.steps) {
+              const prov = db.getProvider(s.providerId);
+              if (prov && s.modelId) {
+                if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+                  prov.models = [...prov.models, s.modelId];
+                  db.saveProvider(prov);
+                }
+                ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ''), prov);
+              }
+            }
+          }
           return jsonResponse({ success: true, combo: updated });
         }
         if (method === 'DELETE') {

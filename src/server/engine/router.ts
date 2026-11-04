@@ -111,11 +111,62 @@ export function resolveComboRoute(combo: ComboConfig, prefix = 'combo'): RouteRe
   const availableSteps = combo.steps
     .map((step) => {
       const p = providers.find((pr) => pr.id === step.providerId);
-      const m = models.find((mo) => mo.id === step.modelId);
+      if (!p || !p.enabled) {
+        return { step, provider: undefined, model: undefined };
+      }
+
+      const rawModelId = (step.modelId || p.defaultModel || p.models[0] || '').trim();
+      if (!rawModelId) {
+        return { step, provider: p, model: undefined };
+      }
+
+      // 1. Exact provider + model match
+      let m = models.find(
+        (mo) =>
+          mo.providerId === p.id &&
+          (mo.id === rawModelId || mo.apiModelName === rawModelId)
+      );
+
+      // 2. Shared model ID registered under another provider — clone with target providerId
+      if (!m) {
+        const shared = models.find((mo) => mo.id === rawModelId || mo.apiModelName === rawModelId);
+        if (shared) {
+          m = {
+            ...shared,
+            id: `${p.id}:${shared.apiModelName || rawModelId}`,
+            providerId: p.id,
+            enabled: true,
+          };
+        }
+      }
+
+      // 3. Inline/provider-listed model not yet in Model Registry — synthesize valid ModelConfig
+      if (!m) {
+        m = {
+          id: rawModelId,
+          displayName: rawModelId,
+          providerId: p.id,
+          apiModelName: rawModelId,
+          contextWindow: 128000,
+          capabilities: {
+            streaming: true,
+            tools: true,
+            vision: false,
+            reasoning: false,
+            jsonOutput: true,
+          },
+          pricing: {
+            inputPer1MTokens: 0.5,
+            outputPer1MTokens: 1.5,
+          },
+          enabled: true,
+        };
+      }
+
       return { step, provider: p, model: m };
     })
     .filter((s): s is { step: typeof s.step; provider: ProviderConfig; model: ModelConfig } => {
-      return Boolean(s.provider && s.provider.enabled && s.model && s.model.enabled);
+      return Boolean(s.provider && s.provider.enabled && s.model && s.model.enabled !== false);
     });
 
   if (availableSteps.length === 0) {

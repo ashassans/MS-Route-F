@@ -211,6 +211,7 @@ export default function App() {
                 providers={providers}
                 models={models}
                 onRefresh={fetchAllData}
+                onNavigate={setCurrentView}
               />
             )}
 

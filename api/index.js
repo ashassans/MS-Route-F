@@ -342,6 +342,10 @@ var GatewayStore = class {
     const prev = this.state.providers.length;
     this.state.providers = this.state.providers.filter((p) => p.id !== id);
     if (this.state.providers.length !== prev) {
+      this.state.models = this.state.models.filter((m) => m.providerId !== id);
+      if (this.state.settings.defaultModelId && !this.state.models.some((m) => m.id === this.state.settings.defaultModelId)) {
+        this.state.settings.defaultModelId = this.state.models[0]?.id || "";
+      }
       this.saveToDisk();
       return true;
     }
@@ -864,10 +868,51 @@ function resolveComboRoute(combo, prefix = "combo") {
   const models = db.getModels();
   const availableSteps = combo.steps.map((step) => {
     const p = providers.find((pr) => pr.id === step.providerId);
-    const m = models.find((mo) => mo.id === step.modelId);
+    if (!p || !p.enabled) {
+      return { step, provider: void 0, model: void 0 };
+    }
+    const rawModelId = (step.modelId || p.defaultModel || p.models[0] || "").trim();
+    if (!rawModelId) {
+      return { step, provider: p, model: void 0 };
+    }
+    let m = models.find(
+      (mo) => mo.providerId === p.id && (mo.id === rawModelId || mo.apiModelName === rawModelId)
+    );
+    if (!m) {
+      const shared = models.find((mo) => mo.id === rawModelId || mo.apiModelName === rawModelId);
+      if (shared) {
+        m = {
+          ...shared,
+          id: `${p.id}:${shared.apiModelName || rawModelId}`,
+          providerId: p.id,
+          enabled: true
+        };
+      }
+    }
+    if (!m) {
+      m = {
+        id: rawModelId,
+        displayName: rawModelId,
+        providerId: p.id,
+        apiModelName: rawModelId,
+        contextWindow: 128e3,
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: false,
+          reasoning: false,
+          jsonOutput: true
+        },
+        pricing: {
+          inputPer1MTokens: 0.5,
+          outputPer1MTokens: 1.5
+        },
+        enabled: true
+      };
+    }
     return { step, provider: p, model: m };
   }).filter((s) => {
-    return Boolean(s.provider && s.provider.enabled && s.model && s.model.enabled);
+    return Boolean(s.provider && s.provider.enabled && s.model && s.model.enabled !== false);
   });
   if (availableSteps.length === 0) {
     const enabledModels = models.filter((m) => m.enabled);
@@ -2534,6 +2579,24 @@ function inferModelDefaults(modelId, providerId) {
     enabled: true
   };
 }
+function ensureProviderModelRegistered(modelId, provider) {
+  const cleanId = modelId.trim();
+  if (!cleanId) return;
+  const existingForProvider = db.getModels().find((m) => m.providerId === provider.id && (m.id === cleanId || m.apiModelName === cleanId));
+  if (existingForProvider) return;
+  const existingGlobal = db.getModel(cleanId);
+  if (!existingGlobal) {
+    db.saveModel(inferModelDefaults(cleanId, provider.id));
+  } else if (existingGlobal.providerId !== provider.id) {
+    const base = inferModelDefaults(cleanId, provider.id);
+    db.saveModel({
+      ...base,
+      id: `${provider.id}:${cleanId}`,
+      displayName: `${cleanId} (${provider.name})`,
+      apiModelName: cleanId
+    });
+  }
+}
 function sanitizeProviderForClient(p) {
   const effectiveRaw = resolveProviderApiKey(p);
   return {
@@ -2605,9 +2668,7 @@ router2.post("/providers", (req, res) => {
   };
   db.saveProvider(newProvider);
   for (const mId of modelList) {
-    if (!db.getModel(mId)) {
-      db.saveModel(inferModelDefaults(mId, newProvider.id));
-    }
+    ensureProviderModelRegistered(mId, newProvider);
   }
   res.json({ success: true, provider: sanitizeProviderForClient(newProvider) });
 });
@@ -2636,9 +2697,7 @@ router2.put("/providers/:id", (req, res) => {
   db.saveProvider(updated);
   if (Array.isArray(updated.models)) {
     for (const mId of updated.models) {
-      if (mId && !db.getModel(mId)) {
-        db.saveModel(inferModelDefaults(mId, updated.id));
-      }
+      if (mId) ensureProviderModelRegistered(mId, updated);
     }
   }
   res.json({ success: true, provider: sanitizeProviderForClient(updated) });
@@ -2789,6 +2848,16 @@ router2.post("/combos", (req, res) => {
     enabled: body.enabled !== false
   };
   db.saveCombo(newCombo);
+  for (const s of newCombo.steps) {
+    const prov = db.getProvider(s.providerId);
+    if (prov && s.modelId) {
+      if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+        prov.models = [...prov.models, s.modelId];
+        db.saveProvider(prov);
+      }
+      ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ""), prov);
+    }
+  }
   res.json({ success: true, combo: newCombo });
 });
 router2.put("/combos/:id", (req, res) => {
@@ -2797,6 +2866,18 @@ router2.put("/combos/:id", (req, res) => {
   if (!existing) return res.status(404).json({ error: "Combo not found" });
   const updated = { ...existing, ...req.body };
   db.saveCombo(updated);
+  if (Array.isArray(updated.steps)) {
+    for (const s of updated.steps) {
+      const prov = db.getProvider(s.providerId);
+      if (prov && s.modelId) {
+        if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+          prov.models = [...prov.models, s.modelId];
+          db.saveProvider(prov);
+        }
+        ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ""), prov);
+      }
+    }
+  }
   res.json({ success: true, combo: updated });
 });
 router2.delete("/combos/:id", (req, res) => {

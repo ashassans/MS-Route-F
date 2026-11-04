@@ -8,6 +8,7 @@ import { isRetryableError } from '../engine/fallback.ts';
 import { db } from '../store/db.ts';
 import { handleGatewayFetch } from '../web-handler.ts';
 import { readApiJson } from '../../lib/api.ts';
+import { getModelsForProvider, createComboStepForProvider, applyStepProviderChange } from '../../lib/combo-helpers.ts';
 
 test('1. Security: AES-256-GCM encryption & decryption roundtrip', () => {
   const secretKey = 'sk-ant-api03-test-secret-key-12345';
@@ -290,4 +291,122 @@ test('9. Safe API JSON reader handles empty 405 and HTML responses gracefully', 
     /Providers API returned HTML instead of JSON/
   );
 });
+
+test('10. Combo Builder: Multi-provider selection, shared model names & inline custom model IDs', async () => {
+  const originalSnapshot = db.serializeFullState();
+  db.setPersistenceHook(() => {});
+  try {
+    // Provider 1 & Provider 2 both serve the exact same model ID ("MiniMaxAI/MiniMax-M2.7")
+    await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'prov-combo-1',
+          name: 'Dahl Primary',
+          type: 'custom',
+          protocol: 'openai-chat',
+          baseUrl: 'https://inference.dahl.global/v1',
+          apiKey: 'sk-combo-1',
+          models: ['MiniMaxAI/MiniMax-M2.7'],
+          defaultModel: 'MiniMaxAI/MiniMax-M2.7',
+          enabled: true,
+        }),
+      })
+    );
+
+    await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'prov-combo-2',
+          name: 'Dahl Backup',
+          type: 'custom',
+          protocol: 'openai-chat',
+          baseUrl: 'https://backup.dahl.global/v1',
+          apiKey: 'sk-combo-2',
+          models: ['MiniMaxAI/MiniMax-M2.7'],
+          defaultModel: 'MiniMaxAI/MiniMax-M2.7',
+          enabled: true,
+        }),
+      })
+    );
+
+    // Provider 3 added with empty models list initially
+    await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'prov-combo-3',
+          name: 'OpenRouter Custom',
+          type: 'openrouter',
+          protocol: 'openai-chat',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          apiKey: 'sk-combo-3',
+          models: [],
+          enabled: true,
+        }),
+      })
+    );
+
+    const providers = db.getProviders();
+    const models = db.getModels();
+
+    const p1Models = getModelsForProvider('prov-combo-1', providers, models);
+    const p2Models = getModelsForProvider('prov-combo-2', providers, models);
+    assert.ok(p1Models.length >= 1, 'First provider should have selectable models');
+    assert.ok(p2Models.length >= 1, 'Second provider with shared model name should also have selectable models');
+    assert.equal(p2Models[0].apiModelName, 'MiniMaxAI/MiniMax-M2.7');
+
+    // Verify immutable provider switching in UI helper
+    const step1 = createComboStepForProvider(
+      providers.find((p) => p.id === 'prov-combo-1'),
+      providers,
+      models,
+      1
+    );
+    const initialSteps = [step1];
+    const updatedSteps = applyStepProviderChange(initialSteps, 0, 'prov-combo-2', providers, models);
+    assert.equal(initialSteps[0].providerId, 'prov-combo-1', 'Original steps array must not be mutated');
+    assert.equal(updatedSteps[0].providerId, 'prov-combo-2');
+    assert.equal(updatedSteps[0].modelId, p2Models[0].id);
+
+    // Save a combo spanning all 3 providers (with inline custom model ID on prov-combo-3)
+    const comboRes = await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/combos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'combo-multi-provider',
+          name: 'Multi Provider Failover',
+          slug: 'combo-multi-provider',
+          strategy: 'sequential-fallback',
+          steps: [
+            { providerId: 'prov-combo-1', modelId: p1Models[0].id, weight: 50, priority: 1 },
+            { providerId: 'prov-combo-2', modelId: p2Models[0].id, weight: 50, priority: 2 },
+            { providerId: 'prov-combo-3', modelId: 'deepseek/deepseek-r1', weight: 50, priority: 3 },
+          ],
+        }),
+      })
+    );
+    assert.equal(comboRes.status, 200);
+
+    const savedCombo = db.getCombo('combo-multi-provider');
+    assert.ok(savedCombo);
+    const route = resolveComboRoute(savedCombo);
+    assert.equal(route.selectedProvider.id, 'prov-combo-1');
+    assert.equal(route.selectedModel.apiModelName, 'MiniMaxAI/MiniMax-M2.7');
+    assert.equal(route.fallbackChain?.length, 2);
+    assert.equal(route.fallbackChain?.[0].provider.id, 'prov-combo-2');
+    assert.equal(route.fallbackChain?.[0].model.apiModelName, 'MiniMaxAI/MiniMax-M2.7');
+    assert.equal(route.fallbackChain?.[1].provider.id, 'prov-combo-3');
+    assert.equal(route.fallbackChain?.[1].model.apiModelName, 'deepseek/deepseek-r1');
+  } finally {
+    db.setPersistenceHook(null);
+    db.hydrateFromJson(originalSnapshot);
+  }
+});
+
 

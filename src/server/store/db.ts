@@ -327,6 +327,13 @@ class GatewayStore {
     const prev = this.state.providers.length;
     this.state.providers = this.state.providers.filter((p) => p.id !== id);
     if (this.state.providers.length !== prev) {
+      this.state.models = this.state.models.filter((m) => m.providerId !== id);
+      if (
+        this.state.settings.defaultModelId &&
+        !this.state.models.some((m) => m.id === this.state.settings.defaultModelId)
+      ) {
+        this.state.settings.defaultModelId = this.state.models[0]?.id || '';
+      }
       this.saveToDisk();
       return true;
     }
