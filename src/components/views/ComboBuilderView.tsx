@@ -7,6 +7,8 @@ import {
   Edit2,
   CheckCircle2,
   AlertCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import type { ComboConfig, ComboStrategy, ProviderConfig, ModelConfig } from '../../types/gateway.ts';
 import { readApiJson } from '../../lib/api.ts';
@@ -14,6 +16,7 @@ import {
   getModelsForProvider,
   createComboStepForProvider,
   applyStepProviderChange,
+  toComboModelSlug,
 } from '../../lib/combo-helpers.ts';
 
 interface ComboBuilderViewProps {
@@ -38,6 +41,8 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [customModelSteps, setCustomModelSteps] = useState<Record<number, boolean>>({});
+  const [customIdTouched, setCustomIdTouched] = useState(false);
+  const [copiedComboId, setCopiedComboId] = useState<string | null>(null);
 
   const canBuildCombo = providers.length > 0;
 
@@ -64,6 +69,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
     setEditingCombo(null);
     setFormError(null);
     setCustomModelSteps({});
+    setCustomIdTouched(false);
 
     const initialSteps =
       providers.length >= 2
@@ -71,7 +77,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
         : [getDefaultStep(0, 1)];
 
     setFormData({
-      id: `combo-${Date.now().toString().slice(-5)}`,
+      id: '',
       name: '',
       description: '',
       strategy: 'sequential',
@@ -86,6 +92,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
     setEditingCombo(combo);
     setFormError(null);
     setCustomModelSteps({});
+    setCustomIdTouched(true);
     setFormData({
       id: combo.id,
       name: combo.name,
@@ -152,8 +159,10 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
       return;
     }
 
+    const resolvedId = formData.id.trim() || toComboModelSlug(formData.name) || `combo-${Date.now().toString().slice(-5)}`;
+
     const payload = {
-      id: formData.id.trim(),
+      id: resolvedId,
       name: formData.name.trim(),
       description: formData.description.trim(),
       strategy: formData.strategy,
@@ -280,11 +289,32 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <div>
-                      <h3 className="font-bold text-sm text-stone-900">{combo.name}</h3>
-                      <p className="text-[11px] text-stone-500 font-mono mt-0.5">{combo.id}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-sm text-stone-900 truncate">{combo.name}</h3>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[11px] text-stone-600 font-mono bg-[#f7f4ef] border border-[#e6dfd4] px-2 py-0.5 rounded-lg truncate">
+                          model: "{combo.id}"
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(combo.id);
+                            setCopiedComboId(combo.id);
+                            setTimeout(() => setCopiedComboId(null), 1800);
+                          }}
+                          className="p-1 text-stone-500 hover:text-stone-900 rounded-md hover:bg-[#f2ede4] transition cursor-pointer shrink-0"
+                          title="Copy model name for API requests"
+                          aria-label={`Copy model ID ${combo.id}`}
+                        >
+                          {copiedComboId === combo.id ? (
+                            <Check className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd]">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd] shrink-0">
                       {combo.strategy}
                     </span>
                   </div>
@@ -409,18 +439,45 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
             )}
 
             <form onSubmit={handleSave} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-stone-600 mb-1 font-semibold">Combo Name *</label>
                   <input
                     type="text"
                     required
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Production Coding Failover"
+                    onChange={(e) => {
+                      const nextName = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        name: nextName,
+                        id: customIdTouched ? prev.id : toComboModelSlug(nextName),
+                      }));
+                    }}
+                    placeholder="e.g. Smart Coding Failover"
                     className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
+                <div>
+                  <label className="block text-stone-600 mb-1 font-semibold">
+                    Model ID (pass as "model" in API) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    aria-label="Combo Model ID"
+                    value={formData.id}
+                    onChange={(e) => {
+                      setCustomIdTouched(true);
+                      setFormData((prev) => ({ ...prev, id: e.target.value }));
+                    }}
+                    placeholder="e.g. smart-coding or gpt-4o"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-stone-600 mb-1 font-semibold">Strategy *</label>
                   <select
@@ -433,17 +490,16 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                     <option value="weighted">Weighted Load Balancing (%)</option>
                   </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-stone-600 mb-1 font-semibold">Description</label>
-                <input
-                  type="text"
-                  placeholder="Describe failover order or routing purpose..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
-                />
+                <div>
+                  <label className="block text-stone-600 mb-1 font-semibold">Description</label>
+                  <input
+                    type="text"
+                    placeholder="Describe failover order or routing purpose..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2 pt-2">

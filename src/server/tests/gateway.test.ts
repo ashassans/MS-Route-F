@@ -409,4 +409,128 @@ test('10. Combo Builder: Multi-provider selection, shared model names & inline c
   }
 });
 
+test('11. Combo Name as Model Name: Passing Combo Name, Slug, or Model-Override ID resolves to Combo', async () => {
+  const originalSnapshot = db.serializeFullState();
+  db.setPersistenceHook(() => {});
+  try {
+    await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'prov-alpha',
+          name: 'Alpha Provider',
+          type: 'custom',
+          protocol: 'openai-chat',
+          baseUrl: 'https://alpha.example.com/v1',
+          apiKey: 'sk-alpha',
+          models: ['MiniMaxAI/MiniMax-M2.7'],
+          defaultModel: 'MiniMaxAI/MiniMax-M2.7',
+          enabled: true,
+        }),
+      })
+    );
+
+    await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'prov-beta',
+          name: 'Beta Provider',
+          type: 'custom',
+          protocol: 'openai-chat',
+          baseUrl: 'https://beta.example.com/v1',
+          apiKey: 'sk-beta',
+          models: ['MiniMaxAI/MiniMax-M2.7'],
+          defaultModel: 'MiniMaxAI/MiniMax-M2.7',
+          enabled: true,
+        }),
+      })
+    );
+
+    // 1. Combo created with human Combo Name "Smart Coding" (auto-slugged to "smart-coding")
+    const createRes = await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/combos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Smart Coding',
+          strategy: 'sequential',
+          steps: [
+            { providerId: 'prov-alpha', modelId: 'MiniMaxAI/MiniMax-M2.7', weight: 50, priority: 1 },
+            { providerId: 'prov-beta', modelId: 'prov-beta:MiniMaxAI/MiniMax-M2.7', weight: 50, priority: 2 },
+          ],
+        }),
+      })
+    );
+    const createdData = await createRes.json();
+    assert.equal(createdData.combo.id, 'smart-coding');
+
+    const dummyReq = parseOpenAiRequest({
+      model: 'Smart Coding',
+      messages: [{ role: 'user', content: 'Hello' }],
+    });
+
+    // Exact Combo Name works as `model`
+    const byExactName = resolveRoute('Smart Coding', dummyReq);
+    assert.equal(byExactName.isCombo, true);
+    assert.equal(byExactName.selectedProvider.id, 'prov-alpha');
+    assert.equal(byExactName.fallbackChain?.length, 1);
+    assert.equal(byExactName.fallbackChain?.[0].provider.id, 'prov-beta');
+
+    // Slugified Model ID works as `model`
+    const bySlug = resolveRoute('smart-coding', dummyReq);
+    assert.equal(bySlug.isCombo, true);
+    assert.equal(bySlug.comboConfig?.id, 'smart-coding');
+
+    // Case-insensitive Combo Name works as `model`
+    const byUpper = resolveRoute('SMART CODING', dummyReq);
+    assert.equal(byUpper.isCombo, true);
+
+    // 2. Combo named directly after a model ("MiniMaxAI/MiniMax-M2.7") overrides single directModel and enables failover
+    await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/combos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'MiniMaxAI/MiniMax-M2.7',
+          name: 'MiniMaxAI/MiniMax-M2.7',
+          strategy: 'sequential',
+          steps: [
+            { providerId: 'prov-alpha', modelId: 'MiniMaxAI/MiniMax-M2.7', weight: 50, priority: 1 },
+            { providerId: 'prov-beta', modelId: 'prov-beta:MiniMaxAI/MiniMax-M2.7', weight: 50, priority: 2 },
+          ],
+        }),
+      })
+    );
+
+    const overrideRoute = resolveRoute('MiniMaxAI/MiniMax-M2.7', dummyReq);
+    assert.equal(overrideRoute.isCombo, true, 'Combo sharing a model ID should route through failover pipeline');
+    assert.equal(overrideRoute.fallbackChain?.length, 1);
+
+    // 3. GET /v1/models lists enabled Combos for external clients
+    const v1ModelsRes = await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/v1/models', {
+        headers: { 'x-msroute-client': 'playground' },
+      })
+    );
+    const v1Models = await v1ModelsRes.json();
+    assert.ok(v1Models.data.some((item: any) => item.id === 'smart-coding' && item.owned_by === 'msroute-combo'));
+
+    // 4. Deleting slash-named combo works cleanly
+    const delSlashCombo = await handleGatewayFetch(
+      new Request(`https://msroute.awesx.workers.dev/api/combos/${encodeURIComponent('MiniMaxAI/MiniMax-M2.7')}`, {
+        method: 'DELETE',
+      })
+    );
+    const delSlashData = await delSlashCombo.json();
+    assert.equal(delSlashData.success, true);
+  } finally {
+    db.setPersistenceHook(null);
+    db.hydrateFromJson(originalSnapshot);
+  }
+});
+
+
 

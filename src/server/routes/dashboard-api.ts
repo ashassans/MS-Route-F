@@ -7,6 +7,7 @@ import { resolveRoute, resolveComboRoute } from '../engine/router.ts';
 import { executeWithFallback } from '../engine/fallback.ts';
 import { parseAnthropicRequest, parseOpenAiRequest } from '../adapters/protocol-converter.ts';
 import { pingProviderConnection, resolveProviderApiKey } from '../adapters/executor.ts';
+import { toComboModelSlug } from '../../lib/combo-helpers.ts';
 import type { ModelConfig, ProviderConfig, RequestLog } from '../../types/gateway.ts';
 
 const router = Router();
@@ -338,9 +339,10 @@ router.post('/combos', (req: Request, res: Response) => {
   if (!body.name || !Array.isArray(body.steps) || body.steps.length === 0) {
     return res.status(400).json({ error: 'Combo name and at least one step are required' });
   }
+  const cleanId = (body.id || '').trim() || toComboModelSlug(body.name) || `combo-${Date.now()}`;
   const newCombo = {
-    id: body.id || `combo-${Date.now()}`,
-    name: body.name,
+    id: cleanId,
+    name: body.name.trim(),
     description: body.description || '',
     strategy: body.strategy || 'sequential',
     steps: body.steps,
@@ -369,34 +371,9 @@ router.post('/combos', (req: Request, res: Response) => {
   res.json({ success: true, combo: newCombo });
 });
 
-router.put('/combos/:id', (req: Request, res: Response) => {
-  const { id } = req.params;
-  const existing = db.getCombo(id);
-  if (!existing) return res.status(404).json({ error: 'Combo not found' });
-  const updated = { ...existing, ...req.body };
-  db.saveCombo(updated);
-  if (Array.isArray(updated.steps)) {
-    for (const s of updated.steps) {
-      const prov = db.getProvider(s.providerId);
-      if (prov && s.modelId) {
-        if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
-          prov.models = [...prov.models, s.modelId];
-          db.saveProvider(prov);
-        }
-        ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ''), prov);
-      }
-    }
-  }
-  res.json({ success: true, combo: updated });
-});
-
-router.delete('/combos/:id', (req: Request, res: Response) => {
-  res.json({ success: db.deleteCombo(req.params.id) });
-});
-
-router.post('/combos/:id/test', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const combo = db.getCombo(id);
+router.post(/^\/combos\/(.+)\/test$/, async (req: Request, res: Response) => {
+  const id = decodeURIComponent(req.params[0] || '');
+  const combo = db.findCombo(id);
   if (!combo) return res.status(404).json({ error: 'Combo not found' });
 
   const start = Date.now();
@@ -422,6 +399,34 @@ router.post('/combos/:id/test', async (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message, latencyMs: Date.now() - start });
   }
+});
+
+router.put(/^\/combos\/(.+)$/, (req: Request, res: Response) => {
+  const id = decodeURIComponent(req.params[0] || '');
+  const existing = db.getCombo(id) || db.findCombo(id);
+  if (!existing) return res.status(404).json({ error: 'Combo not found' });
+  const updatedId = (req.body.id || existing.id).trim();
+  const updated = { ...existing, ...req.body, id: updatedId, name: (req.body.name ?? existing.name).trim() };
+  db.saveCombo(updated, existing.id);
+  if (Array.isArray(updated.steps)) {
+    for (const s of updated.steps) {
+      const prov = db.getProvider(s.providerId);
+      if (prov && s.modelId) {
+        if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+          prov.models = [...prov.models, s.modelId];
+          db.saveProvider(prov);
+        }
+        ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ''), prov);
+      }
+    }
+  }
+  res.json({ success: true, combo: updated });
+});
+
+router.delete(/^\/combos\/(.+)$/, (req: Request, res: Response) => {
+  const id = decodeURIComponent(req.params[0] || '');
+  const existing = db.getCombo(id) || db.findCombo(id);
+  res.json({ success: db.deleteCombo(existing?.id || id) });
 });
 
 // 6. Routing Rules

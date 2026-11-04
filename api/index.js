@@ -61,6 +61,16 @@ function maskSecret(secret) {
   return `${secret.slice(0, 4)}...${secret.slice(-4)}`;
 }
 
+// src/lib/combo-helpers.ts
+function toComboModelSlug(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  if (!/\s/.test(trimmed) && /[/:.]/.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed.toLowerCase().replace(/[^a-z0-9/:._-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 // src/server/store/db.ts
 function resolveDbFilePath() {
   try {
@@ -414,14 +424,22 @@ var GatewayStore = class {
   getCombo(id) {
     return this.state.combos.find((c) => c.id === id);
   }
-  saveCombo(combo) {
-    const idx = this.state.combos.findIndex((c) => c.id === combo.id);
+  findCombo(identifier) {
+    const clean = identifier.trim();
+    if (!clean) return void 0;
+    const lower = clean.toLowerCase();
+    const slug = toComboModelSlug(clean).toLowerCase();
+    return this.state.combos.find((c) => c.id === clean) || this.state.combos.find((c) => c.id.toLowerCase() === lower) || this.state.combos.find((c) => c.name.trim().toLowerCase() === lower) || (slug ? this.state.combos.find((c) => toComboModelSlug(c.name).toLowerCase() === slug) : void 0);
+  }
+  saveCombo(combo, previousId) {
+    const lookupId = previousId || combo.id;
+    const idx = this.state.combos.findIndex((c) => c.id === lookupId || c.id === combo.id);
     if (idx >= 0) {
       this.state.combos[idx] = combo;
     } else {
       this.state.combos.push(combo);
     }
-    if (!this.state.settings.defaultComboId) {
+    if (!this.state.settings.defaultComboId || this.state.settings.defaultComboId === previousId) {
       this.state.settings.defaultComboId = combo.id;
     }
     this.saveToDisk();
@@ -808,7 +826,7 @@ function resolveRoute(requestedModelName, req, forcedMode) {
   const alias = db.getAlias(requestedModelName);
   if (alias) {
     if (alias.targetType === "combo") {
-      const combo = db.getCombo(alias.targetId);
+      const combo = db.findCombo(alias.targetId);
       if (combo && combo.enabled) {
         return resolveComboRoute(combo, `alias:${alias.alias}`);
       }
@@ -826,6 +844,10 @@ function resolveRoute(requestedModelName, req, forcedMode) {
       }
     }
   }
+  const directCombo = db.findCombo(requestedModelName);
+  if (directCombo && directCombo.enabled) {
+    return resolveComboRoute(directCombo, "direct-combo");
+  }
   const directModel = db.getModel(requestedModelName) || db.getModels().find((m) => m.apiModelName === requestedModelName && m.enabled);
   if (directModel && directModel.enabled) {
     const prov2 = db.getProvider(directModel.providerId);
@@ -836,10 +858,6 @@ function resolveRoute(requestedModelName, req, forcedMode) {
         selectedModel: directModel
       };
     }
-  }
-  const directCombo = db.getCombo(requestedModelName);
-  if (directCombo && directCombo.enabled) {
-    return resolveComboRoute(directCombo, "direct-combo");
   }
   if (effectiveMode === "auto") {
     return resolveAutoRoute(req);
@@ -2128,7 +2146,19 @@ router.post("/responses", authenticateGateway, async (req, res) => {
 router.get("/models", authenticateGateway, (_req, res) => {
   const models = db.getModels();
   const aliases = db.getAliases();
+  const combos = db.getCombos().filter((c) => c.enabled);
   const data = [
+    ...combos.map((c) => ({
+      id: c.id,
+      object: "model",
+      created: Math.floor(Date.now() / 1e3),
+      owned_by: "msroute-combo",
+      permission: [],
+      root: c.id,
+      parent: null,
+      display_name: `${c.name} (Combo \u2022 ${c.strategy})`,
+      description: c.description
+    })),
     ...models.map((m) => ({
       id: m.id,
       object: "model",
@@ -2830,9 +2860,10 @@ router2.post("/combos", (req, res) => {
   if (!body.name || !Array.isArray(body.steps) || body.steps.length === 0) {
     return res.status(400).json({ error: "Combo name and at least one step are required" });
   }
+  const cleanId = (body.id || "").trim() || toComboModelSlug(body.name) || `combo-${Date.now()}`;
   const newCombo = {
-    id: body.id || `combo-${Date.now()}`,
-    name: body.name,
+    id: cleanId,
+    name: body.name.trim(),
     description: body.description || "",
     strategy: body.strategy || "sequential",
     steps: body.steps,
@@ -2860,32 +2891,9 @@ router2.post("/combos", (req, res) => {
   }
   res.json({ success: true, combo: newCombo });
 });
-router2.put("/combos/:id", (req, res) => {
-  const { id } = req.params;
-  const existing = db.getCombo(id);
-  if (!existing) return res.status(404).json({ error: "Combo not found" });
-  const updated = { ...existing, ...req.body };
-  db.saveCombo(updated);
-  if (Array.isArray(updated.steps)) {
-    for (const s of updated.steps) {
-      const prov = db.getProvider(s.providerId);
-      if (prov && s.modelId) {
-        if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
-          prov.models = [...prov.models, s.modelId];
-          db.saveProvider(prov);
-        }
-        ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ""), prov);
-      }
-    }
-  }
-  res.json({ success: true, combo: updated });
-});
-router2.delete("/combos/:id", (req, res) => {
-  res.json({ success: db.deleteCombo(req.params.id) });
-});
-router2.post("/combos/:id/test", async (req, res) => {
-  const { id } = req.params;
-  const combo = db.getCombo(id);
+router2.post(/^\/combos\/(.+)\/test$/, async (req, res) => {
+  const id = decodeURIComponent(req.params[0] || "");
+  const combo = db.findCombo(id);
   if (!combo) return res.status(404).json({ error: "Combo not found" });
   const start = Date.now();
   try {
@@ -2909,6 +2917,32 @@ router2.post("/combos/:id/test", async (req, res) => {
   } catch (err) {
     res.status(400).json({ success: false, error: err.message, latencyMs: Date.now() - start });
   }
+});
+router2.put(/^\/combos\/(.+)$/, (req, res) => {
+  const id = decodeURIComponent(req.params[0] || "");
+  const existing = db.getCombo(id) || db.findCombo(id);
+  if (!existing) return res.status(404).json({ error: "Combo not found" });
+  const updatedId = (req.body.id || existing.id).trim();
+  const updated = { ...existing, ...req.body, id: updatedId, name: (req.body.name ?? existing.name).trim() };
+  db.saveCombo(updated, existing.id);
+  if (Array.isArray(updated.steps)) {
+    for (const s of updated.steps) {
+      const prov = db.getProvider(s.providerId);
+      if (prov && s.modelId) {
+        if (!prov.models.includes(s.modelId) && !s.modelId.startsWith(`${prov.id}:`)) {
+          prov.models = [...prov.models, s.modelId];
+          db.saveProvider(prov);
+        }
+        ensureProviderModelRegistered(s.modelId.replace(`${prov.id}:`, ""), prov);
+      }
+    }
+  }
+  res.json({ success: true, combo: updated });
+});
+router2.delete(/^\/combos\/(.+)$/, (req, res) => {
+  const id = decodeURIComponent(req.params[0] || "");
+  const existing = db.getCombo(id) || db.findCombo(id);
+  res.json({ success: db.deleteCombo(existing?.id || id) });
 });
 router2.get("/rules", (_req, res) => {
   res.json(db.getRules());

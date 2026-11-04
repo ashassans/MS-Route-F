@@ -11,6 +11,7 @@ import {
   formatOpenAiResponse,
 } from './adapters/protocol-converter.ts';
 import { pingProviderConnection, resolveProviderApiKey } from './adapters/executor.ts';
+import { toComboModelSlug } from '../lib/combo-helpers.ts';
 import type { ModelConfig, ProviderConfig, RequestLog } from '../types/gateway.ts';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -484,9 +485,10 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
         if (!body.name || !Array.isArray(body.steps) || body.steps.length === 0) {
           return jsonResponse({ error: 'Combo name and at least one step are required' }, 400);
         }
+        const cleanId = (body.id || '').trim() || toComboModelSlug(body.name) || `combo-${Date.now()}`;
         const newCombo = {
-          id: body.id || `combo-${Date.now()}`,
-          name: body.name,
+          id: cleanId,
+          name: body.name.trim(),
           description: body.description || '',
           strategy: body.strategy || 'sequential',
           steps: body.steps,
@@ -515,10 +517,10 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
         return jsonResponse({ success: true, combo: newCombo });
       }
 
-      const comboTestMatch = subPath.match(/^\/combos\/([^/]+)\/test$/);
+      const comboTestMatch = subPath.match(/^\/combos\/(.+)\/test$/);
       if (method === 'POST' && comboTestMatch) {
         const id = decodeURIComponent(comboTestMatch[1]);
-        const combo = db.getCombo(id);
+        const combo = db.findCombo(id);
         if (!combo) return jsonResponse({ error: 'Combo not found' }, 404);
 
         const start = Date.now();
@@ -546,15 +548,16 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
         }
       }
 
-      const comboItemMatch = subPath.match(/^\/combos\/([^/]+)$/);
+      const comboItemMatch = subPath.match(/^\/combos\/(.+)$/);
       if (comboItemMatch) {
         const id = decodeURIComponent(comboItemMatch[1]);
         if (method === 'PUT') {
-          const existing = db.getCombo(id);
+          const existing = db.getCombo(id) || db.findCombo(id);
           if (!existing) return jsonResponse({ error: 'Combo not found' }, 404);
           const body = await readJsonBody(request);
-          const updated = { ...existing, ...body };
-          db.saveCombo(updated);
+          const updatedId = (body.id || existing.id).trim();
+          const updated = { ...existing, ...body, id: updatedId, name: (body.name ?? existing.name).trim() };
+          db.saveCombo(updated, existing.id);
           if (Array.isArray(updated.steps)) {
             for (const s of updated.steps) {
               const prov = db.getProvider(s.providerId);
@@ -570,7 +573,8 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
           return jsonResponse({ success: true, combo: updated });
         }
         if (method === 'DELETE') {
-          return jsonResponse({ success: db.deleteCombo(id) });
+          const existing = db.getCombo(id) || db.findCombo(id);
+          return jsonResponse({ success: db.deleteCombo(existing?.id || id) });
         }
       }
 
@@ -820,7 +824,19 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
       if (method === 'GET' && pathname === '/v1/models') {
         const models = db.getModels();
         const aliases = db.getAliases();
+        const combos = db.getCombos().filter((c) => c.enabled);
         const data = [
+          ...combos.map((c) => ({
+            id: c.id,
+            object: 'model',
+            created: Math.floor(Date.now() / 1000),
+            owned_by: 'msroute-combo',
+            permission: [],
+            root: c.id,
+            parent: null,
+            display_name: `${c.name} (Combo • ${c.strategy})`,
+            description: c.description,
+          })),
           ...models.map((m) => ({
             id: m.id,
             object: 'model',

@@ -495,8 +495,20 @@ router.post('/responses', authenticateGateway, async (req: Request, res: Respons
 router.get('/models', authenticateGateway, (_req: Request, res: Response) => {
   const models = db.getModels();
   const aliases = db.getAliases();
+  const combos = db.getCombos().filter((c) => c.enabled);
 
   const data = [
+    ...combos.map((c) => ({
+      id: c.id,
+      object: 'model',
+      created: Math.floor(Date.now() / 1000),
+      owned_by: 'msroute-combo',
+      permission: [],
+      root: c.id,
+      parent: null,
+      display_name: `${c.name} (Combo • ${c.strategy})`,
+      description: c.description,
+    })),
     ...models.map((m) => ({
       id: m.id,
       object: 'model',

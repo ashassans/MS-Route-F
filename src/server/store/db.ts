@@ -13,6 +13,7 @@ import type {
   GatewayAnalytics,
 } from '../../types/gateway.ts';
 import { encryptSecret, hashGatewayKey } from '../security/encryption.ts';
+import { toComboModelSlug } from '../../lib/combo-helpers.ts';
 
 function resolveDbFilePath(): string | null {
   try {
@@ -413,14 +414,29 @@ class GatewayStore {
     return this.state.combos.find((c) => c.id === id);
   }
 
-  saveCombo(combo: ComboConfig): void {
-    const idx = this.state.combos.findIndex((c) => c.id === combo.id);
+  findCombo(identifier: string): ComboConfig | undefined {
+    const clean = identifier.trim();
+    if (!clean) return undefined;
+    const lower = clean.toLowerCase();
+    const slug = toComboModelSlug(clean).toLowerCase();
+
+    return (
+      this.state.combos.find((c) => c.id === clean) ||
+      this.state.combos.find((c) => c.id.toLowerCase() === lower) ||
+      this.state.combos.find((c) => c.name.trim().toLowerCase() === lower) ||
+      (slug ? this.state.combos.find((c) => toComboModelSlug(c.name).toLowerCase() === slug) : undefined)
+    );
+  }
+
+  saveCombo(combo: ComboConfig, previousId?: string): void {
+    const lookupId = previousId || combo.id;
+    const idx = this.state.combos.findIndex((c) => c.id === lookupId || c.id === combo.id);
     if (idx >= 0) {
       this.state.combos[idx] = combo;
     } else {
       this.state.combos.push(combo);
     }
-    if (!this.state.settings.defaultComboId) {
+    if (!this.state.settings.defaultComboId || this.state.settings.defaultComboId === previousId) {
       this.state.settings.defaultComboId = combo.id;
     }
     this.saveToDisk();

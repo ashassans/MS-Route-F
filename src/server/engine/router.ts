@@ -26,7 +26,7 @@ export function resolveRoute(
   const alias = db.getAlias(requestedModelName);
   if (alias) {
     if (alias.targetType === 'combo') {
-      const combo = db.getCombo(alias.targetId);
+      const combo = db.findCombo(alias.targetId);
       if (combo && combo.enabled) {
         return resolveComboRoute(combo, `alias:${alias.alias}`);
       }
@@ -45,7 +45,13 @@ export function resolveRoute(
     }
   }
 
-  // 2. Check if requested model directly matches a Model ID or API model name
+  // 2. Check if requested model matches a Combo ID, Combo Name, or Combo Slug
+  const directCombo = db.findCombo(requestedModelName);
+  if (directCombo && directCombo.enabled) {
+    return resolveComboRoute(directCombo, 'direct-combo');
+  }
+
+  // 3. Check if requested model directly matches a Model ID or API model name
   const directModel =
     db.getModel(requestedModelName) ||
     db.getModels().find((m) => m.apiModelName === requestedModelName && m.enabled);
@@ -58,12 +64,6 @@ export function resolveRoute(
         selectedModel: directModel,
       };
     }
-  }
-
-  // 3. Check if requested model matches a Combo ID
-  const directCombo = db.getCombo(requestedModelName);
-  if (directCombo && directCombo.enabled) {
-    return resolveComboRoute(directCombo, 'direct-combo');
   }
 
   // 4. Auto Routing Mode

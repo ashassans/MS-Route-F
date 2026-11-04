@@ -14,6 +14,24 @@ export interface SelectableModelOption {
 }
 
 /**
+ * Generates a clean API model identifier from a Combo Name.
+ * Preserves slashes/dots/colons if the user enters a provider/model identifier
+ * (e.g. "MiniMaxAI/MiniMax-M2.7"), while converting spaces in human titles
+ * (e.g. "Smart Coding Failover" -> "smart-coding-failover").
+ */
+export function toComboModelSlug(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  if (!/\s/.test(trimmed) && /[/:.]/.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9/:._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
  * Returns all selectable model options for a given provider by merging
  * registered ModelConfigs for that provider with any model strings listed
  * directly on the ProviderConfig (including shared model names across providers).
