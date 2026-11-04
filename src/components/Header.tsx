@@ -35,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSigningIn, setIsSigningIn] = React.useState(false);
   const [authError, setAuthError] = React.useState<string | null>(null);
   const [showDomainModal, setShowDomainModal] = React.useState(false);
+  const [showProviderModal, setShowProviderModal] = React.useState(false);
   const [domainToAuthorize, setDomainToAuthorize] = React.useState('');
   const [copiedDomain, setCopiedDomain] = React.useState(false);
 
@@ -44,7 +45,9 @@ export const Header: React.FC<HeaderProps> = ({
     try {
       const res = await loginWithGoogle();
       if (!res.success) {
-        if (res.unauthorizedDomain || res.code === 'auth/unauthorized-domain') {
+        if (res.code === 'auth/operation-not-allowed' || res.error?.includes('auth/operation-not-allowed')) {
+          setShowProviderModal(true);
+        } else if (res.unauthorizedDomain || res.code === 'auth/unauthorized-domain') {
           const domain = res.unauthorizedDomain || (typeof window !== 'undefined' ? window.location.hostname : '');
           setDomainToAuthorize(domain);
           setShowDomainModal(true);
@@ -53,7 +56,9 @@ export const Header: React.FC<HeaderProps> = ({
         }
       }
     } catch (err: any) {
-      if (err?.code === 'auth/unauthorized-domain') {
+      if (err?.code === 'auth/operation-not-allowed' || err?.message?.includes('auth/operation-not-allowed')) {
+        setShowProviderModal(true);
+      } else if (err?.code === 'auth/unauthorized-domain') {
         const domain = typeof window !== 'undefined' ? window.location.hostname : '';
         setDomainToAuthorize(domain);
         setShowDomainModal(true);
@@ -262,6 +267,65 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 onClick={() => setShowDomainModal(false)}
+                className="w-full sm:w-auto px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProviderModal && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e5e0d8] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">Enable Google Sign-In in Firebase</h3>
+                  <p className="text-xs text-stone-500">
+                    Project: <span className="text-amber-700 font-mono font-medium">{firebaseConfig.projectId}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowProviderModal(false)}
+                className="text-stone-400 hover:text-stone-700 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 leading-relaxed">
+              Firebase returned <span className="font-mono font-semibold">auth/operation-not-allowed</span> because the <strong>Google</strong> sign-in provider is not yet enabled in your Firebase project.
+            </div>
+
+            <div className="space-y-2 pt-1 text-xs text-stone-700">
+              <span className="font-semibold block">Steps to fix in 30 seconds:</span>
+              <ol className="list-decimal list-inside space-y-1.5 text-stone-600 bg-[#faf8f5] p-3 rounded-xl border border-[#e2dcd2]">
+                <li>Open <span className="text-stone-800 font-medium">Firebase Console &gt; Authentication &gt; Sign-in method</span></li>
+                <li>Click <span className="text-amber-800 font-medium">Google</span> (or <span className="text-amber-800 font-medium">Add new provider &gt; Google</span>)</li>
+                <li>Toggle <span className="text-stone-800 font-medium">Enable</span> ON, select a <span className="text-stone-800 font-medium">Project support email</span>, and click <span className="text-stone-800 font-medium">Save</span></li>
+                <li>Also ensure your domain (<span className="font-mono text-stone-800">{typeof window !== 'undefined' ? window.location.hostname : 'your-app.vercel.app'}</span>) is added under <span className="text-stone-800 font-medium">Settings &gt; Authorized domains</span></li>
+              </ol>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
+              <a
+                href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full sm:w-auto flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Open Sign-In Providers</span>
+              </a>
+
+              <button
+                onClick={() => setShowProviderModal(false)}
                 className="w-full sm:w-auto px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 Close
