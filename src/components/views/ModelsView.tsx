@@ -10,6 +10,7 @@ import {
   Tag,
 } from 'lucide-react';
 import type { ModelConfig, ModelAlias, ProviderConfig, ComboConfig } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 interface ModelsViewProps {
   models: ModelConfig[];
@@ -117,7 +118,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
           enabled: true,
         }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res, 'Models API');
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to register model');
       setIsModelModalOpen(false);
       onRefresh();
@@ -128,7 +129,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
   const handleDeleteModel = async (id: string) => {
     try {
-      await fetch(`/api/models/${id}`, { method: 'DELETE' });
+      await fetch(`/api/models/${encodeURIComponent(id)}`, { method: 'DELETE' });
       setConfirmDeleteModelId(null);
       onRefresh();
     } catch (err: any) {
@@ -155,7 +156,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
           targetId: aliasForm.targetId,
         }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res, 'Aliases API');
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create alias');
       setIsAliasModalOpen(false);
       onRefresh();
@@ -166,7 +167,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
   const handleDeleteAlias = async (id: string) => {
     try {
-      await fetch(`/api/aliases/${id}`, { method: 'DELETE' });
+      await fetch(`/api/aliases/${encodeURIComponent(id)}`, { method: 'DELETE' });
       setConfirmDeleteAliasId(null);
       onRefresh();
     } catch (err: any) {

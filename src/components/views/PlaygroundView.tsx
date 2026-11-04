@@ -7,6 +7,7 @@ import {
   Radio,
 } from 'lucide-react';
 import type { ModelConfig, ModelAlias, ComboConfig } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 interface PlaygroundViewProps {
   models: ModelConfig[];
@@ -158,7 +159,7 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           }),
         });
 
-        const data = await res.json();
+        const data = await readApiJson(res, 'Playground API');
         if (!res.ok || !data.success) throw new Error(data.error || 'Request failed');
 
         setOutput(data.content ?? data.output ?? '');

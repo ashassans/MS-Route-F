@@ -9,6 +9,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import type { ComboConfig, ComboStrategy, ProviderConfig, ModelConfig } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 interface ComboBuilderViewProps {
   combos: ComboConfig[];
@@ -145,14 +146,14 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
     };
 
     try {
-      const url = editingCombo ? `/api/combos/${editingCombo.id}` : '/api/combos';
+      const url = editingCombo ? `/api/combos/${encodeURIComponent(editingCombo.id)}` : '/api/combos';
       const method = editingCombo ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await readApiJson(res, 'Combos API');
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to save combo');
       setIsModalOpen(false);
       onRefresh();
@@ -163,7 +164,7 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`/api/combos/${id}`, { method: 'DELETE' });
+      await fetch(`/api/combos/${encodeURIComponent(id)}`, { method: 'DELETE' });
       setConfirmDeleteId(null);
       onRefresh();
     } catch (err: any) {
@@ -175,8 +176,8 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
     setTestingId(id);
     setTestResult(null);
     try {
-      const res = await fetch(`/api/combos/${id}/test`, { method: 'POST' });
-      const data = await res.json();
+      const res = await fetch(`/api/combos/${encodeURIComponent(id)}/test`, { method: 'POST' });
+      const data = await readApiJson(res, 'Combo Test API');
       setTestResult({ id, ...data });
     } catch (err: any) {
       setTestResult({ id, success: false, error: err.message });

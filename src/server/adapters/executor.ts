@@ -93,13 +93,41 @@ export async function pingProviderConnection(provider: ProviderConfig): Promise<
       signal: controller.signal,
     });
 
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`${provider.name} (${res.status}): ${body.slice(0, 180)}`);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data?.data) ? data.data.length : undefined };
     }
 
-    const data = await res.json().catch(() => ({}));
-    return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data?.data) ? data.data.length : undefined };
+    // Some custom OpenAI-compatible inference servers only expose POST /chat/completions
+    const probeModel = provider.defaultModel || provider.models[0];
+    if ((res.status === 404 || res.status === 405) && probeModel) {
+      const chatUrl = base.endsWith('/chat/completions')
+        ? base
+        : base.endsWith('/v1') || base.includes('/openai')
+          ? `${base}/chat/completions`
+          : `${base}/v1/chat/completions`;
+      const probeRes = await fetch(chatUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify({
+          model: probeModel,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+        }),
+        signal: controller.signal,
+      });
+      if (probeRes.ok) {
+        return { latencyMs: Date.now() - start, modelsCount: provider.models.length || 1 };
+      }
+      const probeBody = await probeRes.text();
+      throw new Error(`${provider.name} (${probeRes.status}): ${probeBody.slice(0, 180)}`);
+    }
+
+    const body = await res.text();
+    throw new Error(`${provider.name} (${res.status}): ${body.slice(0, 180)}`);
   } finally {
     clearTimeout(timeout);
   }

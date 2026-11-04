@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, testConnection } from './lib/firebase.ts';
+import { readApiJson } from './lib/api.ts';
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { OverviewView } from './components/views/OverviewView.tsx';
@@ -65,15 +66,34 @@ export default function App() {
         fetch('/api/settings'),
       ]);
 
-      if (provRes.ok) setProviders(await provRes.json());
-      if (modRes.ok) setModels(await modRes.json());
-      if (aliasRes.ok) setAliases(await aliasRes.json());
-      if (comboRes.ok) setCombos(await comboRes.json());
-      if (ruleRes.ok) setRules(await ruleRes.json());
-      if (keyRes.ok) setApiKeys(await keyRes.json());
-      if (logRes.ok) setLogs(await logRes.json());
-      if (anaRes.ok) setAnalytics(await anaRes.json());
-      if (setRes.ok) setSettings(await setRes.json());
+      const safeOkJson = async <T,>(res: Response): Promise<T | null> => {
+        if (!res.ok) return null;
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) return null;
+        return readApiJson<T>(res).catch(() => null);
+      };
+
+      const [prov, mod, al, cmb, rl, ks, lg, ana, st] = await Promise.all([
+        safeOkJson<ProviderConfig[]>(provRes),
+        safeOkJson<ModelConfig[]>(modRes),
+        safeOkJson<ModelAlias[]>(aliasRes),
+        safeOkJson<ComboConfig[]>(comboRes),
+        safeOkJson<RoutingRule[]>(ruleRes),
+        safeOkJson<GatewayApiKey[]>(keyRes),
+        safeOkJson<RequestLog[]>(logRes),
+        safeOkJson<GatewayAnalytics>(anaRes),
+        safeOkJson<GatewaySettings>(setRes),
+      ]);
+
+      if (prov) setProviders(prov);
+      if (mod) setModels(mod);
+      if (al) setAliases(al);
+      if (cmb) setCombos(cmb);
+      if (rl) setRules(rl);
+      if (ks) setApiKeys(ks);
+      if (lg) setLogs(lg);
+      if (ana) setAnalytics(ana);
+      if (st) setSettings(st);
       setBannerError(null);
     } catch (err) {
       console.error('Error fetching gateway state:', err);
@@ -96,7 +116,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res, 'Emergency Kill Switch API');
+      if (!res.ok) throw new Error(data.error || 'Failed to update kill switch');
       if (settings) {
         setSettings({ ...settings, emergencyKillSwitch: data.emergencyKillSwitch });
       }

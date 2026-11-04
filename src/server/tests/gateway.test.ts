@@ -6,6 +6,8 @@ import { parseAnthropicRequest, formatAnthropicResponse, parseOpenAiRequest, for
 import { resolveRoute, resolveComboRoute } from '../engine/router.ts';
 import { isRetryableError } from '../engine/fallback.ts';
 import { db } from '../store/db.ts';
+import { handleGatewayFetch } from '../web-handler.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 test('1. Security: AES-256-GCM encryption & decryption roundtrip', () => {
   const secretKey = 'sk-ant-api03-test-secret-key-12345';
@@ -37,6 +39,7 @@ test('3. Security: SSRF validation blocks malicious and private URLs', () => {
   assert.equal(validateProviderUrl('https://api.openai.com/v1').valid, true);
   assert.equal(validateProviderUrl('https://api.anthropic.com').valid, true);
   assert.equal(validateProviderUrl('https://openrouter.ai/api/v1').valid, true);
+  assert.equal(validateProviderUrl('https://inference.dahl.global/v1').valid, true);
 });
 
 test('4. Protocol Converter: Anthropic Messages parser and formatter', () => {
@@ -212,3 +215,79 @@ test('7. Resilience: Error categorization for retry & failover', () => {
   assert.equal(isRetryableError(new Error('Invalid api key provided')), false);
   assert.equal(isRetryableError(new Error('Missing API key for provider')), false);
 });
+
+test('8. Cloudflare Worker Web Fetch Handler: Custom provider & slash model ID lifecycle', async () => {
+  let persistedSnapshots = 0;
+  const originalSnapshot = db.serializeFullState();
+  db.setPersistenceHook(() => {
+    persistedSnapshots += 1;
+  });
+
+  try {
+    const createRes = await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'test-dahl',
+          name: 'dahl',
+          type: 'custom',
+          protocol: 'openai-chat',
+          baseUrl: 'https://inference.dahl.global/v1',
+          apiKey: 'sk-dahl-test-secret-9999',
+          models: ['MiniMaxAI/MiniMax-M2.7'],
+          defaultModel: 'MiniMaxAI/MiniMax-M2.7',
+          timeoutMs: 30000,
+          priority: 2,
+          maxRetries: 5,
+          enabled: true,
+        }),
+      })
+    );
+
+    assert.equal(createRes.status, 200);
+    const created = await createRes.json();
+    assert.equal(created.success, true);
+    assert.equal(created.provider.id, 'test-dahl');
+    assert.equal(created.provider.hasApiKey, true);
+    assert.ok(persistedSnapshots >= 2, 'Should persist both provider and auto-registered model');
+
+    const modelsRes = await handleGatewayFetch(new Request('https://msroute.awesx.workers.dev/api/models'));
+    const models = await modelsRes.json();
+    assert.ok(models.some((m: any) => m.id === 'MiniMaxAI/MiniMax-M2.7'));
+
+    const delModelRes = await handleGatewayFetch(
+      new Request(`https://msroute.awesx.workers.dev/api/models/${encodeURIComponent('MiniMaxAI/MiniMax-M2.7')}`, {
+        method: 'DELETE',
+      })
+    );
+    const delModelData = await delModelRes.json();
+    assert.equal(delModelData.success, true);
+
+    const delProvRes = await handleGatewayFetch(
+      new Request('https://msroute.awesx.workers.dev/api/providers/test-dahl', {
+        method: 'DELETE',
+      })
+    );
+    const delProvData = await delProvRes.json();
+    assert.equal(delProvData.success, true);
+  } finally {
+    db.setPersistenceHook(null);
+    db.hydrateFromJson(originalSnapshot);
+  }
+});
+
+test('9. Safe API JSON reader handles empty 405 and HTML responses gracefully', async () => {
+  const empty405 = new Response('', { status: 405 });
+  await assert.rejects(
+    () => readApiJson(empty405, 'Providers API'),
+    /Providers API returned an empty response \(HTTP 405\)/
+  );
+
+  const htmlFallback = new Response('<!doctype html><html><body>Not Found</body></html>', { status: 200 });
+  await assert.rejects(
+    () => readApiJson(htmlFallback, 'Providers API'),
+    /Providers API returned HTML instead of JSON/
+  );
+});
+

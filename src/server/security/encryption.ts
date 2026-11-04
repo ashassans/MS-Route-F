@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 
-// AES-256-GCM requires a 32-byte key
-const MASTER_SECRET = process.env.GATEWAY_ENCRYPTION_SECRET || 'nexusgate-secure-default-encryption-key-32b-len';
-const KEY = crypto.createHash('sha256').update(MASTER_SECRET).digest();
+function getMasterKey(): Buffer {
+  const masterSecret = process.env.GATEWAY_ENCRYPTION_SECRET || 'nexusgate-secure-default-encryption-key-32b-len';
+  return crypto.createHash('sha256').update(masterSecret).digest();
+}
 
 /**
  * Encrypt sensitive provider API keys using AES-256-GCM with authentication tag.
@@ -10,7 +11,7 @@ const KEY = crypto.createHash('sha256').update(MASTER_SECRET).digest();
 export function encryptSecret(plainText: string): string {
   if (!plainText) return '';
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', KEY, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getMasterKey(), iv);
   let encrypted = cipher.update(plainText, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   const authTag = cipher.getAuthTag().toString('hex');
@@ -33,7 +34,7 @@ export function decryptSecret(encryptedPayload: string): string {
     const iv = Buffer.from(parts[0], 'hex');
     const authTag = Buffer.from(parts[1], 'hex');
     const encryptedText = parts[2];
-    const decipher = crypto.createDecipheriv('aes-256-gcm', KEY, iv);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', getMasterKey(), iv);
     decipher.setAuthTag(authTag);
     let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
     decrypted += decipher.final('utf8');

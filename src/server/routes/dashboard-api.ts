@@ -269,8 +269,8 @@ router.post('/models', (req: Request, res: Response) => {
   res.json({ success: true, model });
 });
 
-router.put('/models/:id', (req: Request, res: Response) => {
-  const { id } = req.params;
+router.put(/^\/models\/(.+)$/, (req: Request, res: Response) => {
+  const id = decodeURIComponent(req.params[0] || '');
   const existing = db.getModel(id);
   if (!existing) return res.status(404).json({ error: 'Model not found' });
   const updated = { ...existing, ...req.body };
@@ -278,8 +278,8 @@ router.put('/models/:id', (req: Request, res: Response) => {
   res.json({ success: true, model: updated });
 });
 
-router.delete('/models/:id', (req: Request, res: Response) => {
-  const { id } = req.params;
+router.delete(/^\/models\/(.+)$/, (req: Request, res: Response) => {
+  const id = decodeURIComponent(req.params[0] || '');
   res.json({ success: db.deleteModel(id) });
 });
 

@@ -11,6 +11,7 @@ import {
   KeyRound,
 } from 'lucide-react';
 import type { ProviderConfig, ProviderType, ApiProtocol, HealthStatus } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 interface ProvidersViewProps {
   providers: ProviderConfig[];
@@ -228,7 +229,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
         enabled: formData.enabled,
       };
 
-      const url = editingProvider ? `/api/providers/${editingProvider.id}` : '/api/providers';
+      const url = editingProvider ? `/api/providers/${encodeURIComponent(editingProvider.id)}` : '/api/providers';
       const method = editingProvider ? 'PUT' : 'POST';
 
       const res = await fetch(url, {
@@ -237,7 +238,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
         body: JSON.stringify(editingProvider ? payload : { id: formData.id.trim(), ...payload }),
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res, 'Providers API');
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to save provider');
       }
@@ -252,8 +253,8 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
   const handleDelete = async (id: string) => {
     setActionError(null);
     try {
-      const res = await fetch(`/api/providers/${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const res = await fetch(`/api/providers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const data = await readApiJson(res, 'Providers API');
       if (!data.success) throw new Error(data.error || 'Failed to delete provider');
       setConfirmDeleteId(null);
       onRefresh();
@@ -266,8 +267,8 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
     setTestingId(id);
     setTestResult(null);
     try {
-      const res = await fetch(`/api/providers/${id}/test`, { method: 'POST' });
-      const data = await res.json();
+      const res = await fetch(`/api/providers/${encodeURIComponent(id)}/test`, { method: 'POST' });
+      const data = await readApiJson(res, 'Provider Test API');
       setTestResult({
         id,
         success: Boolean(data.success),

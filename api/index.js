@@ -12,12 +12,14 @@ import path from "node:path";
 
 // src/server/security/encryption.ts
 import crypto from "node:crypto";
-var MASTER_SECRET = process.env.GATEWAY_ENCRYPTION_SECRET || "nexusgate-secure-default-encryption-key-32b-len";
-var KEY = crypto.createHash("sha256").update(MASTER_SECRET).digest();
+function getMasterKey() {
+  const masterSecret = process.env.GATEWAY_ENCRYPTION_SECRET || "nexusgate-secure-default-encryption-key-32b-len";
+  return crypto.createHash("sha256").update(masterSecret).digest();
+}
 function encryptSecret(plainText) {
   if (!plainText) return "";
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", KEY, iv);
+  const cipher = crypto.createCipheriv("aes-256-gcm", getMasterKey(), iv);
   let encrypted = cipher.update(plainText, "utf8", "hex");
   encrypted += cipher.final("hex");
   const authTag = cipher.getAuthTag().toString("hex");
@@ -33,7 +35,7 @@ function decryptSecret(encryptedPayload) {
     const iv = Buffer.from(parts[0], "hex");
     const authTag = Buffer.from(parts[1], "hex");
     const encryptedText = parts[2];
-    const decipher = crypto.createDecipheriv("aes-256-gcm", KEY, iv);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", getMasterKey(), iv);
     decipher.setAuthTag(authTag);
     let decrypted = decipher.update(encryptedText, "hex", "utf8");
     decrypted += decipher.final("utf8");
@@ -60,7 +62,19 @@ function maskSecret(secret) {
 }
 
 // src/server/store/db.ts
-var DB_FILE = process.env.VERCEL ? path.join(os.tmpdir(), ".gateway-data.json") : path.resolve(process.cwd(), ".gateway-data.json");
+function resolveDbFilePath() {
+  try {
+    if (typeof process !== "undefined" && process.env?.CLOUDFLARE_WORKER === "1") {
+      return null;
+    }
+    if (typeof process !== "undefined" && process.env?.VERCEL) {
+      return path.join(os.tmpdir(), ".gateway-data.json");
+    }
+    return path.resolve(process.cwd(), ".gateway-data.json");
+  } catch {
+    return null;
+  }
+}
 function buildEnvBootstrappedState() {
   const providers = [];
   const models = [];
@@ -217,7 +231,36 @@ function buildInitialSettings(defaultModelId = "") {
 }
 var GatewayStore = class {
   constructor() {
+    this.customSaveHook = null;
     this.state = this.loadFromDisk();
+  }
+  setPersistenceHook(saveFn) {
+    this.customSaveHook = saveFn;
+  }
+  serializeFullState() {
+    return JSON.stringify(this.state);
+  }
+  hydrateFromJson(raw) {
+    const fresh = this.createFreshState();
+    if (!raw) {
+      this.state = fresh;
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      this.state = {
+        providers: Array.isArray(parsed.providers) ? parsed.providers : fresh.providers,
+        models: Array.isArray(parsed.models) ? parsed.models : fresh.models,
+        aliases: Array.isArray(parsed.aliases) ? parsed.aliases : [],
+        combos: Array.isArray(parsed.combos) ? parsed.combos : [],
+        rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+        apiKeys: Array.isArray(parsed.apiKeys) ? parsed.apiKeys : [],
+        logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+        settings: { ...fresh.settings, ...parsed.settings || {} }
+      };
+    } catch {
+      this.state = fresh;
+    }
   }
   createFreshState() {
     const bootstrapped = buildEnvBootstrappedState();
@@ -233,9 +276,13 @@ var GatewayStore = class {
     };
   }
   loadFromDisk() {
+    const dbFile = resolveDbFilePath();
+    if (!dbFile) {
+      return this.createFreshState();
+    }
     try {
-      if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, "utf-8");
+      if (fs.existsSync(dbFile)) {
+        const raw = fs.readFileSync(dbFile, "utf-8");
         const parsed = JSON.parse(raw);
         const fresh = this.createFreshState();
         return {
@@ -255,8 +302,18 @@ var GatewayStore = class {
     return this.createFreshState();
   }
   saveToDisk() {
+    if (this.customSaveHook) {
+      try {
+        this.customSaveHook(JSON.stringify(this.state));
+      } catch (err) {
+        console.error("Failed to persist gateway state to custom storage:", err);
+      }
+      return;
+    }
+    const dbFile = resolveDbFilePath();
+    if (!dbFile) return;
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.state, null, 2), "utf-8");
+      fs.writeFileSync(dbFile, JSON.stringify(this.state, null, 2), "utf-8");
     } catch (err) {
       console.error("Failed to write to database file:", err);
     }
@@ -962,11 +1019,11 @@ async function pingProviderConnection(provider) {
         signal: controller.signal
       });
       if (!res2.ok) {
-        const body = await res2.text();
-        throw new Error(`Gemini API (${res2.status}): ${body.slice(0, 180)}`);
+        const body2 = await res2.text();
+        throw new Error(`Gemini API (${res2.status}): ${body2.slice(0, 180)}`);
       }
-      const data2 = await res2.json();
-      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data2.models) ? data2.models.length : void 0 };
+      const data = await res2.json();
+      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data.models) ? data.models.length : void 0 };
     }
     if (provider.protocol === "anthropic-messages" || provider.type === "anthropic") {
       const base2 = (provider.baseUrl || "https://api.anthropic.com").replace(/\/$/, "");
@@ -981,11 +1038,11 @@ async function pingProviderConnection(provider) {
         signal: controller.signal
       });
       if (!res2.ok) {
-        const body = await res2.text();
-        throw new Error(`Anthropic API (${res2.status}): ${body.slice(0, 180)}`);
+        const body2 = await res2.text();
+        throw new Error(`Anthropic API (${res2.status}): ${body2.slice(0, 180)}`);
       }
-      const data2 = await res2.json();
-      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data2.data) ? data2.data.length : void 0 };
+      const data = await res2.json();
+      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data.data) ? data.data.length : void 0 };
     }
     const base = provider.baseUrl.replace(/\/$/, "");
     const modelsUrl = base.endsWith("/v1") || base.includes("/openai") ? `${base}/models` : `${base}/v1/models`;
@@ -1000,12 +1057,34 @@ async function pingProviderConnection(provider) {
       headers,
       signal: controller.signal
     });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`${provider.name} (${res.status}): ${body.slice(0, 180)}`);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data?.data) ? data.data.length : void 0 };
     }
-    const data = await res.json().catch(() => ({}));
-    return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data?.data) ? data.data.length : void 0 };
+    const probeModel = provider.defaultModel || provider.models[0];
+    if ((res.status === 404 || res.status === 405) && probeModel) {
+      const chatUrl = base.endsWith("/chat/completions") ? base : base.endsWith("/v1") || base.includes("/openai") ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
+      const probeRes = await fetch(chatUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...headers
+        },
+        body: JSON.stringify({
+          model: probeModel,
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 1
+        }),
+        signal: controller.signal
+      });
+      if (probeRes.ok) {
+        return { latencyMs: Date.now() - start, modelsCount: provider.models.length || 1 };
+      }
+      const probeBody = await probeRes.text();
+      throw new Error(`${provider.name} (${probeRes.status}): ${probeBody.slice(0, 180)}`);
+    }
+    const body = await res.text();
+    throw new Error(`${provider.name} (${res.status}): ${body.slice(0, 180)}`);
   } finally {
     clearTimeout(timeout);
   }
@@ -2650,16 +2729,16 @@ router2.post("/models", (req, res) => {
   db.saveModel(model);
   res.json({ success: true, model });
 });
-router2.put("/models/:id", (req, res) => {
-  const { id } = req.params;
+router2.put(/^\/models\/(.+)$/, (req, res) => {
+  const id = decodeURIComponent(req.params[0] || "");
   const existing = db.getModel(id);
   if (!existing) return res.status(404).json({ error: "Model not found" });
   const updated = { ...existing, ...req.body };
   db.saveModel(updated);
   res.json({ success: true, model: updated });
 });
-router2.delete("/models/:id", (req, res) => {
-  const { id } = req.params;
+router2.delete(/^\/models\/(.+)$/, (req, res) => {
+  const id = decodeURIComponent(req.params[0] || "");
   res.json({ success: db.deleteModel(id) });
 });
 router2.get("/aliases", (_req, res) => {

@@ -14,9 +14,19 @@ import type {
 } from '../../types/gateway.ts';
 import { encryptSecret, hashGatewayKey } from '../security/encryption.ts';
 
-const DB_FILE = process.env.VERCEL
-  ? path.join(os.tmpdir(), '.gateway-data.json')
-  : path.resolve(process.cwd(), '.gateway-data.json');
+function resolveDbFilePath(): string | null {
+  try {
+    if (typeof process !== 'undefined' && process.env?.CLOUDFLARE_WORKER === '1') {
+      return null;
+    }
+    if (typeof process !== 'undefined' && process.env?.VERCEL) {
+      return path.join(os.tmpdir(), '.gateway-data.json');
+    }
+    return path.resolve(process.cwd(), '.gateway-data.json');
+  } catch {
+    return null;
+  }
+}
 
 interface GatewayDatabaseState {
   providers: ProviderConfig[];
@@ -191,9 +201,41 @@ function buildInitialSettings(defaultModelId = ''): GatewaySettings {
 
 class GatewayStore {
   private state: GatewayDatabaseState;
+  private customSaveHook: ((json: string) => void) | null = null;
 
   constructor() {
     this.state = this.loadFromDisk();
+  }
+
+  setPersistenceHook(saveFn: ((json: string) => void) | null): void {
+    this.customSaveHook = saveFn;
+  }
+
+  serializeFullState(): string {
+    return JSON.stringify(this.state);
+  }
+
+  hydrateFromJson(raw: string | null | undefined): void {
+    const fresh = this.createFreshState();
+    if (!raw) {
+      this.state = fresh;
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      this.state = {
+        providers: Array.isArray(parsed.providers) ? parsed.providers : fresh.providers,
+        models: Array.isArray(parsed.models) ? parsed.models : fresh.models,
+        aliases: Array.isArray(parsed.aliases) ? parsed.aliases : [],
+        combos: Array.isArray(parsed.combos) ? parsed.combos : [],
+        rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+        apiKeys: Array.isArray(parsed.apiKeys) ? parsed.apiKeys : [],
+        logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+        settings: { ...fresh.settings, ...(parsed.settings || {}) },
+      };
+    } catch {
+      this.state = fresh;
+    }
   }
 
   private createFreshState(): GatewayDatabaseState {
@@ -211,9 +253,13 @@ class GatewayStore {
   }
 
   private loadFromDisk(): GatewayDatabaseState {
+    const dbFile = resolveDbFilePath();
+    if (!dbFile) {
+      return this.createFreshState();
+    }
     try {
-      if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+      if (fs.existsSync(dbFile)) {
+        const raw = fs.readFileSync(dbFile, 'utf-8');
         const parsed = JSON.parse(raw);
         const fresh = this.createFreshState();
         return {
@@ -235,8 +281,20 @@ class GatewayStore {
   }
 
   private saveToDisk(): void {
+    if (this.customSaveHook) {
+      try {
+        this.customSaveHook(JSON.stringify(this.state));
+      } catch (err) {
+        console.error('Failed to persist gateway state to custom storage:', err);
+      }
+      return;
+    }
+
+    const dbFile = resolveDbFilePath();
+    if (!dbFile) return;
+
     try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(this.state, null, 2), 'utf-8');
+      fs.writeFileSync(dbFile, JSON.stringify(this.state, null, 2), 'utf-8');
     } catch (err) {
       console.error('Failed to write to database file:', err);
     }

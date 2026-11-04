@@ -1,0 +1,26 @@
+{
+  "name": "msroute",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2025-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/v1/*"]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "GATEWAY_DO",
+        "class_name": "MSRouteGatewayDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MSRouteGatewayDO"]
+    }
+  ]
+}

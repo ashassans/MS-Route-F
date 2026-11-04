@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import type { GatewaySettings } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 import firebaseConfig from '../../../firebase-applet-config.json';
 
 interface SettingsViewProps {
@@ -104,7 +105,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ configJson: importJson }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res, 'Import Config API');
       if (!res.ok || !data.success) throw new Error('Invalid configuration JSON');
       setImportSuccess(true);
       setTimeout(() => setImportSuccess(false), 3000);

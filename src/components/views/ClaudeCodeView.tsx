@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { ClaudeSuiteReport } from '../../server/testing/claude-suite.ts';
 import type { GatewayApiKey, ModelConfig, ComboConfig } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 interface ClaudeCodeViewProps {
   apiKeys: GatewayApiKey[];
@@ -57,7 +58,7 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="${haikuTarget}"`;
     setSuiteError(null);
     try {
       const res = await fetch('/api/test/claude-suite', { method: 'POST' });
-      const report: ClaudeSuiteReport = await res.json();
+      const report = await readApiJson<ClaudeSuiteReport>(res, 'Claude Code Suite API');
       if (!res.ok) throw new Error((report as any).error || 'Compatibility suite failed');
       setSuiteReport(report);
     } catch (err: any) {

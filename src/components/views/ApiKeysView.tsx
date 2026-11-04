@@ -7,6 +7,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import type { GatewayApiKey } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 interface ApiKeysViewProps {
   apiKeys: GatewayApiKey[];
@@ -49,7 +50,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), rateLimitPerMinute, permissions }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res, 'API Keys');
       if (!res.ok) throw new Error(data.error || 'Failed to create key');
 
       setIsCreateModalOpen(false);
