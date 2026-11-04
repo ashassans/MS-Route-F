@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {
+import type {
   ProviderConfig,
   ModelConfig,
   ModelAlias,
@@ -26,546 +26,165 @@ interface GatewayDatabaseState {
   settings: GatewaySettings;
 }
 
-// Initial Seed Configuration for Instant Out-of-the-Box Functionality
-const INITIAL_PROVIDERS: ProviderConfig[] = [
-  {
-    id: 'prov-gemini',
-    name: 'Google Gemini',
-    type: 'gemini',
-    baseUrl: 'https://generativelanguage.googleapis.com',
-    apiKey: encryptSecret(process.env.GEMINI_API_KEY || 'demo-gemini-key'),
-    protocol: 'google-gemini',
-    models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-    defaultModel: 'gemini-2.5-flash',
-    timeoutMs: 30000,
-    priority: 1,
-    maxRetries: 2,
-    enabled: true,
-    health: {
-      status: 'healthy',
-      latencyMs: 142,
-      lastChecked: new Date().toISOString(),
-      lastSuccess: new Date().toISOString(),
-      recentErrorsCount: 0,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'prov-anthropic',
-    name: 'Anthropic',
-    type: 'anthropic',
-    baseUrl: 'https://api.anthropic.com',
-    apiKey: encryptSecret(process.env.ANTHROPIC_API_KEY || ''),
-    protocol: 'anthropic-messages',
-    models: ['claude-3-7-sonnet', 'claude-3-5-sonnet', 'claude-3-5-haiku'],
-    defaultModel: 'claude-3-7-sonnet',
-    timeoutMs: 45000,
-    priority: 1,
-    maxRetries: 2,
-    enabled: true,
-    health: {
-      status: 'healthy',
-      latencyMs: 280,
-      lastChecked: new Date().toISOString(),
-      lastSuccess: new Date().toISOString(),
-      recentErrorsCount: 0,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'prov-openai',
-    name: 'OpenAI',
-    type: 'openai',
-    baseUrl: 'https://api.openai.com',
-    apiKey: encryptSecret(process.env.OPENAI_API_KEY || ''),
-    protocol: 'openai-chat',
-    models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
-    defaultModel: 'gpt-4o',
-    timeoutMs: 30000,
-    priority: 2,
-    maxRetries: 2,
-    enabled: true,
-    health: {
-      status: 'healthy',
-      latencyMs: 210,
-      lastChecked: new Date().toISOString(),
-      lastSuccess: new Date().toISOString(),
-      recentErrorsCount: 0,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'prov-deepseek',
-    name: 'DeepSeek',
-    type: 'deepseek',
-    baseUrl: 'https://api.deepseek.com',
-    apiKey: encryptSecret(process.env.DEEPSEEK_API_KEY || ''),
-    protocol: 'openai-chat',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    defaultModel: 'deepseek-chat',
-    timeoutMs: 40000,
-    priority: 3,
-    maxRetries: 2,
-    enabled: true,
-    health: {
-      status: 'healthy',
-      latencyMs: 310,
-      lastChecked: new Date().toISOString(),
-      lastSuccess: new Date().toISOString(),
-      recentErrorsCount: 0,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'prov-groq',
-    name: 'Groq Cloud',
-    type: 'groq',
-    baseUrl: 'https://api.groq.com/openai',
-    apiKey: encryptSecret(process.env.GROQ_API_KEY || ''),
-    protocol: 'openai-chat',
-    models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768'],
-    defaultModel: 'llama-3.3-70b-versatile',
-    timeoutMs: 20000,
-    priority: 2,
-    maxRetries: 2,
-    enabled: true,
-    health: {
-      status: 'healthy',
-      latencyMs: 95,
-      lastChecked: new Date().toISOString(),
-      lastSuccess: new Date().toISOString(),
-      recentErrorsCount: 0,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 'prov-openrouter',
-    name: 'OpenRouter Aggregator',
-    type: 'openrouter',
-    baseUrl: 'https://openrouter.ai/api',
-    apiKey: encryptSecret(process.env.OPENROUTER_API_KEY || ''),
-    protocol: 'openai-chat',
-    models: ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o', 'deepseek/deepseek-r1'],
-    defaultModel: 'anthropic/claude-3.5-sonnet',
-    timeoutMs: 45000,
-    priority: 4,
-    maxRetries: 2,
-    enabled: true,
-    health: {
-      status: 'healthy',
-      latencyMs: 340,
-      lastChecked: new Date().toISOString(),
-      lastSuccess: new Date().toISOString(),
-      recentErrorsCount: 0,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
+function buildEnvBootstrappedState(): Pick<GatewayDatabaseState, 'providers' | 'models'> {
+  const providers: ProviderConfig[] = [];
+  const models: ModelConfig[] = [];
+  const now = new Date().toISOString();
 
-const INITIAL_MODELS: ModelConfig[] = [
-  {
-    id: 'gemini-2.5-flash',
-    displayName: 'Gemini 2.5 Flash',
-    providerId: 'prov-gemini',
-    apiModelName: 'gemini-2.5-flash',
-    contextWindow: 1048576,
-    capabilities: { streaming: true, tools: true, vision: true, reasoning: true, jsonOutput: true },
-    pricing: { inputPer1MTokens: 0.15, outputPer1MTokens: 0.60 },
-    enabled: true,
-  },
-  {
-    id: 'gemini-2.5-pro',
-    displayName: 'Gemini 2.5 Pro',
-    providerId: 'prov-gemini',
-    apiModelName: 'gemini-2.5-pro',
-    contextWindow: 2097152,
-    capabilities: { streaming: true, tools: true, vision: true, reasoning: true, jsonOutput: true },
-    pricing: { inputPer1MTokens: 1.25, outputPer1MTokens: 5.00 },
-    enabled: true,
-  },
-  {
-    id: 'claude-3-7-sonnet',
-    displayName: 'Claude 3.7 Sonnet',
-    providerId: 'prov-anthropic',
-    apiModelName: 'claude-3-7-sonnet-20250219',
-    contextWindow: 200000,
-    capabilities: { streaming: true, tools: true, vision: true, reasoning: true, jsonOutput: true },
-    pricing: { inputPer1MTokens: 3.00, outputPer1MTokens: 15.00 },
-    enabled: true,
-  },
-  {
-    id: 'claude-3-5-haiku',
-    displayName: 'Claude 3.5 Haiku',
-    providerId: 'prov-anthropic',
-    apiModelName: 'claude-3-5-haiku-20241022',
-    contextWindow: 200000,
-    capabilities: { streaming: true, tools: true, vision: false, reasoning: false, jsonOutput: true },
-    pricing: { inputPer1MTokens: 0.80, outputPer1MTokens: 4.00 },
-    enabled: true,
-  },
-  {
-    id: 'gpt-4o',
-    displayName: 'GPT-4o Omnimodal',
-    providerId: 'prov-openai',
-    apiModelName: 'gpt-4o',
-    contextWindow: 128000,
-    capabilities: { streaming: true, tools: true, vision: true, reasoning: false, jsonOutput: true },
-    pricing: { inputPer1MTokens: 2.50, outputPer1MTokens: 10.00 },
-    enabled: true,
-  },
-  {
-    id: 'gpt-4o-mini',
-    displayName: 'GPT-4o Mini',
-    providerId: 'prov-openai',
-    apiModelName: 'gpt-4o-mini',
-    contextWindow: 128000,
-    capabilities: { streaming: true, tools: true, vision: true, reasoning: false, jsonOutput: true },
-    pricing: { inputPer1MTokens: 0.15, outputPer1MTokens: 0.60 },
-    enabled: true,
-  },
-  {
-    id: 'deepseek-chat',
-    displayName: 'DeepSeek-V3 Chat',
-    providerId: 'prov-deepseek',
-    apiModelName: 'deepseek-chat',
-    contextWindow: 64000,
-    capabilities: { streaming: true, tools: true, vision: false, reasoning: false, jsonOutput: true },
-    pricing: { inputPer1MTokens: 0.14, outputPer1MTokens: 0.28 },
-    enabled: true,
-  },
-  {
-    id: 'deepseek-reasoner',
-    displayName: 'DeepSeek-R1 Reasoner',
-    providerId: 'prov-deepseek',
-    apiModelName: 'deepseek-reasoner',
-    contextWindow: 64000,
-    capabilities: { streaming: true, tools: true, vision: false, reasoning: true, jsonOutput: false },
-    pricing: { inputPer1MTokens: 0.55, outputPer1MTokens: 2.19 },
-    enabled: true,
-  },
-  {
-    id: 'llama-3.3-70b-versatile',
-    displayName: 'Llama 3.3 70B (Groq)',
-    providerId: 'prov-groq',
-    apiModelName: 'llama-3.3-70b-versatile',
-    contextWindow: 128000,
-    capabilities: { streaming: true, tools: true, vision: false, reasoning: false, jsonOutput: true },
-    pricing: { inputPer1MTokens: 0.59, outputPer1MTokens: 0.79 },
-    enabled: true,
-  },
-];
-
-const INITIAL_ALIASES: ModelAlias[] = [
-  {
-    id: 'alias-fast',
-    alias: 'my-fast',
-    description: 'Ultra-low latency model for simple tasks and quick inspections',
-    targetType: 'model',
-    targetId: 'gemini-2.5-flash',
-  },
-  {
-    id: 'alias-coding',
-    alias: 'my-coding',
-    description: 'Top-tier code engineering combo with automatic fallback',
-    targetType: 'combo',
-    targetId: 'combo-prod-coding',
-  },
-  {
-    id: 'alias-reasoning',
-    alias: 'my-reasoning',
-    description: 'Deep chain-of-thought mathematical and architectural reasoning',
-    targetType: 'model',
-    targetId: 'deepseek-reasoner',
-  },
-  {
-    id: 'alias-vision',
-    alias: 'my-vision',
-    description: 'High-resolution multimodal visual analysis',
-    targetType: 'model',
-    targetId: 'gemini-2.5-pro',
-  },
-  {
-    id: 'alias-best',
-    alias: 'my-best',
-    description: 'Best overall model for mission-critical tasks',
-    targetType: 'model',
-    targetId: 'claude-3-7-sonnet',
-  },
-  // Claude Code standard aliases
-  {
-    id: 'alias-claude-sonnet',
-    alias: 'claude-3-5-sonnet-20241022',
-    description: 'Claude Code Default Sonnet mapping',
-    targetType: 'combo',
-    targetId: 'combo-prod-coding',
-    isClaudeCodeDefault: true,
-  },
-  {
-    id: 'alias-claude-haiku',
-    alias: 'claude-3-5-haiku-20241022',
-    description: 'Claude Code Default Haiku mapping',
-    targetType: 'model',
-    targetId: 'claude-3-5-haiku',
-    isClaudeCodeDefault: true,
-  },
-  {
-    id: 'alias-claude-opus',
-    alias: 'claude-3-opus-20240229',
-    description: 'Claude Code Opus mapping',
-    targetType: 'model',
-    targetId: 'claude-3-7-sonnet',
-    isClaudeCodeDefault: true,
-  },
-];
-
-const INITIAL_COMBOS: ComboConfig[] = [
-  {
-    id: 'combo-prod-coding',
-    name: 'Production Coding Failover',
-    description: 'Tries Anthropic Sonnet first. On rate-limit or error, falls back to Gemini 2.5 Pro, then DeepSeek Chat.',
-    strategy: 'sequential',
-    steps: [
-      { providerId: 'prov-anthropic', modelId: 'claude-3-7-sonnet', priority: 1 },
-      { providerId: 'prov-gemini', modelId: 'gemini-2.5-pro', priority: 2 },
-      { providerId: 'prov-deepseek', modelId: 'deepseek-chat', priority: 3 },
-    ],
-    primaryProviderId: 'prov-anthropic',
-    retryRules: {
-      maxAttempts: 3,
-      backoffMs: 500,
-      retryOnRateLimit: true,
-      retryOnTimeout: true,
-      retryOnServerError: true,
-    },
-    timeoutMs: 45000,
-    enabled: true,
-  },
-  {
-    id: 'combo-ultra-fast',
-    name: 'Ultra Fast Parallel Race',
-    description: 'Concurrent race between Groq Llama 3.3 and Gemini Flash. Returns the lowest-latency response.',
-    strategy: 'parallel',
-    steps: [
-      { providerId: 'prov-groq', modelId: 'llama-3.3-70b-versatile' },
-      { providerId: 'prov-gemini', modelId: 'gemini-2.5-flash' },
-    ],
-    retryRules: {
-      maxAttempts: 2,
-      backoffMs: 300,
-      retryOnRateLimit: true,
-      retryOnTimeout: true,
-      retryOnServerError: true,
-    },
-    timeoutMs: 20000,
-    enabled: true,
-  },
-  {
-    id: 'combo-cost-balancer',
-    name: 'Weighted Cost Balancer',
-    description: 'Distributes 65% of volume to Groq and 35% to Gemini Flash with health-aware automatic exclusion.',
-    strategy: 'weighted',
-    steps: [
-      { providerId: 'prov-groq', modelId: 'llama-3.3-70b-versatile', weight: 65 },
-      { providerId: 'prov-gemini', modelId: 'gemini-2.5-flash', weight: 35 },
-    ],
-    retryRules: {
-      maxAttempts: 2,
-      backoffMs: 400,
-      retryOnRateLimit: true,
-      retryOnTimeout: true,
-      retryOnServerError: true,
-    },
-    timeoutMs: 25000,
-    enabled: true,
-  },
-];
-
-const INITIAL_RULES: RoutingRule[] = [
-  {
-    id: 'rule-coding',
-    name: 'Coding & Development Tasks',
-    taskType: 'coding',
-    description: 'Routes coding workflows to the Production Coding combo',
-    preferredComboId: 'combo-prod-coding',
-    minimumCapabilities: { tools: true, streaming: true },
-    priority: 1,
-  },
-  {
-    id: 'rule-fast',
-    name: 'Fast & Lightweight Queries',
-    taskType: 'fast',
-    description: 'Routes conversational queries to lowest-latency model',
-    preferredModelId: 'gemini-2.5-flash',
-    minimumCapabilities: { streaming: true },
-    priority: 2,
-  },
-  {
-    id: 'rule-reasoning',
-    name: 'Complex Reasoning & Math',
-    taskType: 'reasoning',
-    description: 'Routes deep step-by-step logic to DeepSeek R1',
-    preferredModelId: 'deepseek-reasoner',
-    minimumCapabilities: { reasoning: true },
-    priority: 3,
-  },
-  {
-    id: 'rule-vision',
-    name: 'Vision & Multimodal Input',
-    taskType: 'vision',
-    description: 'Routes image inspection to Gemini 2.5 Pro or GPT-4o',
-    preferredModelId: 'gemini-2.5-pro',
-    minimumCapabilities: { vision: true },
-    priority: 4,
-  },
-];
-
-// Pre-seeded master key for owner access
-const DEFAULT_KEY_RAW = 'gw-live-master-key-prod-001';
-const INITIAL_KEYS: GatewayApiKey[] = [
-  {
-    id: 'key-master-001',
-    name: 'Claude Code & Primary Development Key',
-    keyPrefix: 'gw-live-master...',
-    keyHash: hashGatewayKey(DEFAULT_KEY_RAW),
-    permissions: ['all'],
-    rateLimitPerMinute: 600,
-    createdAt: new Date().toISOString(),
-    revoked: false,
-  },
-];
-
-const INITIAL_SETTINGS: GatewaySettings = {
-  emergencyKillSwitch: false,
-  defaultRoutingMode: 'combo',
-  defaultModelId: 'claude-3-7-sonnet',
-  defaultComboId: 'combo-prod-coding',
-  globalDailyRequestLimit: 5000,
-  globalMonthlySpendingLimitUsd: 150.0,
-  currentMonthlySpentUsd: 14.82,
-  requestTimeoutMs: 35000,
-  maxRetries: 3,
-  retentionDays: 30,
-  ownerUid: 'owner-personal-cloud-uid',
-  ownerEmail: 'digonto9191@gmail.com',
-  claudeCodeProfile: {
-    defaultSonnetModel: 'combo-prod-coding',
-    defaultOpusModel: 'claude-3-7-sonnet',
-    defaultHaikuModel: 'claude-3-5-haiku',
-    activeRoutingProfile: 'Production Coding Failover',
-  },
-};
-
-// Seed 8 realistic recent request logs for rich UI
-const INITIAL_LOGS: RequestLog[] = [
-  {
-    id: 'req-001-init',
-    timestamp: new Date(Date.now() - 1000 * 60 * 3).toISOString(),
-    clientType: 'claude-code',
-    endpoint: '/v1/messages',
-    requestedModel: 'claude-3-5-sonnet-20241022',
-    resolvedModel: 'claude-3-7-sonnet',
-    selectedProvider: 'Anthropic',
-    routingStrategy: 'combo-sequential',
-    status: 'success',
-    statusCode: 200,
-    latencyMs: 385,
-    inputTokens: 1420,
-    outputTokens: 620,
-    estimatedCostUsd: 0.0135,
-    retryCount: 0,
-    fallbackHistory: [],
-    streaming: true,
-  },
-  {
-    id: 'req-002-init',
-    timestamp: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
-    clientType: 'claude-code',
-    endpoint: '/v1/messages',
-    requestedModel: 'claude-3-5-sonnet-20241022',
-    resolvedModel: 'gemini-2.5-pro',
-    selectedProvider: 'Google Gemini',
-    routingStrategy: 'combo-sequential (fallback)',
-    status: 'fallback_success',
-    statusCode: 200,
-    latencyMs: 512,
-    inputTokens: 2150,
-    outputTokens: 890,
-    estimatedCostUsd: 0.0071,
-    retryCount: 1,
-    fallbackHistory: [
+  const geminiKey = process.env.GEMINI_API_KEY?.trim();
+  if (geminiKey) {
+    providers.push({
+      id: 'prov-gemini',
+      name: 'Google Gemini',
+      type: 'gemini',
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: encryptSecret(geminiKey),
+      protocol: 'google-gemini',
+      models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+      defaultModel: 'gemini-2.5-flash',
+      timeoutMs: 30000,
+      priority: 1,
+      maxRetries: 2,
+      enabled: true,
+      health: { status: 'unknown', recentErrorsCount: 0 },
+      createdAt: now,
+      updatedAt: now,
+    });
+    models.push(
       {
-        providerId: 'prov-anthropic',
-        modelId: 'claude-3-7-sonnet',
-        error: '429 Rate limit exceeded - failover triggered',
-        attemptTime: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
+        id: 'gemini-2.5-flash',
+        displayName: 'Gemini 2.5 Flash',
+        providerId: 'prov-gemini',
+        apiModelName: 'gemini-2.5-flash',
+        contextWindow: 1048576,
+        capabilities: { streaming: true, tools: true, vision: true, reasoning: true, jsonOutput: true },
+        pricing: { inputPer1MTokens: 0.15, outputPer1MTokens: 0.6 },
+        enabled: true,
       },
-    ],
-    streaming: true,
-  },
-  {
-    id: 'req-003-init',
-    timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    clientType: 'openai-sdk',
-    endpoint: '/v1/chat/completions',
-    requestedModel: 'my-fast',
-    resolvedModel: 'gemini-2.5-flash',
-    selectedProvider: 'Google Gemini',
-    routingStrategy: 'alias-resolution',
-    status: 'success',
-    statusCode: 200,
-    latencyMs: 145,
-    inputTokens: 520,
-    outputTokens: 180,
-    estimatedCostUsd: 0.00018,
-    retryCount: 0,
-    fallbackHistory: [],
-    streaming: true,
-  },
-  {
-    id: 'req-004-init',
-    timestamp: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-    clientType: 'claude-code',
-    endpoint: '/v1/messages',
-    requestedModel: 'my-reasoning',
-    resolvedModel: 'deepseek-reasoner',
-    selectedProvider: 'DeepSeek',
-    routingStrategy: 'alias-resolution',
-    status: 'success',
-    statusCode: 200,
-    latencyMs: 820,
-    inputTokens: 3100,
-    outputTokens: 1450,
-    estimatedCostUsd: 0.0048,
-    retryCount: 0,
-    fallbackHistory: [],
-    streaming: true,
-  },
-  {
-    id: 'req-005-init',
-    timestamp: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-    clientType: 'playground',
-    endpoint: '/v1/chat/completions',
-    requestedModel: 'gpt-4o',
-    resolvedModel: 'gpt-4o',
-    selectedProvider: 'OpenAI',
-    routingStrategy: 'manual',
-    status: 'success',
-    statusCode: 200,
-    latencyMs: 275,
-    inputTokens: 410,
-    outputTokens: 195,
-    estimatedCostUsd: 0.0029,
-    retryCount: 0,
-    fallbackHistory: [],
-    streaming: false,
-  },
-];
+      {
+        id: 'gemini-2.5-pro',
+        displayName: 'Gemini 2.5 Pro',
+        providerId: 'prov-gemini',
+        apiModelName: 'gemini-2.5-pro',
+        contextWindow: 2097152,
+        capabilities: { streaming: true, tools: true, vision: true, reasoning: true, jsonOutput: true },
+        pricing: { inputPer1MTokens: 1.25, outputPer1MTokens: 5.0 },
+        enabled: true,
+      }
+    );
+  }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey) {
+    providers.push({
+      id: 'prov-anthropic',
+      name: 'Anthropic',
+      type: 'anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      apiKey: encryptSecret(anthropicKey),
+      protocol: 'anthropic-messages',
+      models: ['claude-3-7-sonnet-20250219', 'claude-3-5-haiku-20241022'],
+      defaultModel: 'claude-3-7-sonnet-20250219',
+      timeoutMs: 45000,
+      priority: 1,
+      maxRetries: 2,
+      enabled: true,
+      health: { status: 'unknown', recentErrorsCount: 0 },
+      createdAt: now,
+      updatedAt: now,
+    });
+    models.push(
+      {
+        id: 'claude-3-7-sonnet',
+        displayName: 'Claude 3.7 Sonnet',
+        providerId: 'prov-anthropic',
+        apiModelName: 'claude-3-7-sonnet-20250219',
+        contextWindow: 200000,
+        capabilities: { streaming: true, tools: true, vision: true, reasoning: true, jsonOutput: true },
+        pricing: { inputPer1MTokens: 3.0, outputPer1MTokens: 15.0 },
+        enabled: true,
+      },
+      {
+        id: 'claude-3-5-haiku',
+        displayName: 'Claude 3.5 Haiku',
+        providerId: 'prov-anthropic',
+        apiModelName: 'claude-3-5-haiku-20241022',
+        contextWindow: 200000,
+        capabilities: { streaming: true, tools: true, vision: false, reasoning: false, jsonOutput: true },
+        pricing: { inputPer1MTokens: 0.8, outputPer1MTokens: 4.0 },
+        enabled: true,
+      }
+    );
+  }
+
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  if (openaiKey) {
+    providers.push({
+      id: 'prov-openai',
+      name: 'OpenAI',
+      type: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: encryptSecret(openaiKey),
+      protocol: 'openai-chat',
+      models: ['gpt-4o', 'gpt-4o-mini'],
+      defaultModel: 'gpt-4o',
+      timeoutMs: 30000,
+      priority: 2,
+      maxRetries: 2,
+      enabled: true,
+      health: { status: 'unknown', recentErrorsCount: 0 },
+      createdAt: now,
+      updatedAt: now,
+    });
+    models.push(
+      {
+        id: 'gpt-4o',
+        displayName: 'GPT-4o',
+        providerId: 'prov-openai',
+        apiModelName: 'gpt-4o',
+        contextWindow: 128000,
+        capabilities: { streaming: true, tools: true, vision: true, reasoning: false, jsonOutput: true },
+        pricing: { inputPer1MTokens: 2.5, outputPer1MTokens: 10.0 },
+        enabled: true,
+      },
+      {
+        id: 'gpt-4o-mini',
+        displayName: 'GPT-4o Mini',
+        providerId: 'prov-openai',
+        apiModelName: 'gpt-4o-mini',
+        contextWindow: 128000,
+        capabilities: { streaming: true, tools: true, vision: true, reasoning: false, jsonOutput: true },
+        pricing: { inputPer1MTokens: 0.15, outputPer1MTokens: 0.6 },
+        enabled: true,
+      }
+    );
+  }
+
+  return { providers, models };
+}
+
+function buildInitialSettings(defaultModelId = ''): GatewaySettings {
+  return {
+    emergencyKillSwitch: false,
+    defaultRoutingMode: 'auto',
+    defaultModelId,
+    defaultComboId: '',
+    globalDailyRequestLimit: 5000,
+    globalMonthlySpendingLimitUsd: 150.0,
+    currentMonthlySpentUsd: 0,
+    requestTimeoutMs: 35000,
+    maxRetries: 3,
+    retentionDays: 30,
+    ownerUid: '',
+    ownerEmail: '',
+    claudeCodeProfile: {
+      defaultSonnetModel: defaultModelId,
+      defaultOpusModel: defaultModelId,
+      defaultHaikuModel: defaultModelId,
+      activeRoutingProfile: 'Default Gateway Policy',
+    },
+  };
+}
 
 class GatewayStore {
   private state: GatewayDatabaseState;
@@ -574,36 +193,42 @@ class GatewayStore {
     this.state = this.loadFromDisk();
   }
 
+  private createFreshState(): GatewayDatabaseState {
+    const bootstrapped = buildEnvBootstrappedState();
+    return {
+      providers: bootstrapped.providers,
+      models: bootstrapped.models,
+      aliases: [],
+      combos: [],
+      rules: [],
+      apiKeys: [],
+      logs: [],
+      settings: buildInitialSettings(bootstrapped.models[0]?.id || ''),
+    };
+  }
+
   private loadFromDisk(): GatewayDatabaseState {
     try {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
+        const fresh = this.createFreshState();
         return {
-          providers: parsed.providers || INITIAL_PROVIDERS,
-          models: parsed.models || INITIAL_MODELS,
-          aliases: parsed.aliases || INITIAL_ALIASES,
-          combos: parsed.combos || INITIAL_COMBOS,
-          rules: parsed.rules || INITIAL_RULES,
-          apiKeys: parsed.apiKeys || INITIAL_KEYS,
-          logs: parsed.logs || INITIAL_LOGS,
-          settings: { ...INITIAL_SETTINGS, ...(parsed.settings || {}) },
+          providers: Array.isArray(parsed.providers) ? parsed.providers : fresh.providers,
+          models: Array.isArray(parsed.models) ? parsed.models : fresh.models,
+          aliases: Array.isArray(parsed.aliases) ? parsed.aliases : [],
+          combos: Array.isArray(parsed.combos) ? parsed.combos : [],
+          rules: Array.isArray(parsed.rules) ? parsed.rules : [],
+          apiKeys: Array.isArray(parsed.apiKeys) ? parsed.apiKeys : [],
+          logs: Array.isArray(parsed.logs) ? parsed.logs : [],
+          settings: { ...fresh.settings, ...(parsed.settings || {}) },
         };
       }
     } catch (err) {
-      console.warn('Failed to read database file, initializing defaults:', err);
+      console.warn('Failed to read database file, initializing clean state:', err);
     }
 
-    return {
-      providers: INITIAL_PROVIDERS,
-      models: INITIAL_MODELS,
-      aliases: INITIAL_ALIASES,
-      combos: INITIAL_COMBOS,
-      rules: INITIAL_RULES,
-      apiKeys: INITIAL_KEYS,
-      logs: INITIAL_LOGS,
-      settings: INITIAL_SETTINGS,
-    };
+    return this.createFreshState();
   }
 
   private saveToDisk(): void {
@@ -663,6 +288,9 @@ class GatewayStore {
     } else {
       this.state.models.push(model);
     }
+    if (!this.state.settings.defaultModelId) {
+      this.state.settings.defaultModelId = model.id;
+    }
     this.saveToDisk();
   }
 
@@ -670,6 +298,9 @@ class GatewayStore {
     const prev = this.state.models.length;
     this.state.models = this.state.models.filter((m) => m.id !== id);
     if (this.state.models.length !== prev) {
+      if (this.state.settings.defaultModelId === id) {
+        this.state.settings.defaultModelId = this.state.models[0]?.id || '';
+      }
       this.saveToDisk();
       return true;
     }
@@ -696,9 +327,13 @@ class GatewayStore {
   }
 
   deleteAlias(id: string): boolean {
+    const prev = this.state.aliases.length;
     this.state.aliases = this.state.aliases.filter((a) => a.id !== id);
-    this.saveToDisk();
-    return true;
+    if (this.state.aliases.length !== prev) {
+      this.saveToDisk();
+      return true;
+    }
+    return false;
   }
 
   // --- Combos ---
@@ -717,18 +352,28 @@ class GatewayStore {
     } else {
       this.state.combos.push(combo);
     }
+    if (!this.state.settings.defaultComboId) {
+      this.state.settings.defaultComboId = combo.id;
+    }
     this.saveToDisk();
   }
 
   deleteCombo(id: string): boolean {
+    const prev = this.state.combos.length;
     this.state.combos = this.state.combos.filter((c) => c.id !== id);
-    this.saveToDisk();
-    return true;
+    if (this.state.combos.length !== prev) {
+      if (this.state.settings.defaultComboId === id) {
+        this.state.settings.defaultComboId = this.state.combos[0]?.id || '';
+      }
+      this.saveToDisk();
+      return true;
+    }
+    return false;
   }
 
   // --- Routing Rules ---
   getRules(): RoutingRule[] {
-    return this.state.rules.sort((a, b) => a.priority - b.priority);
+    return [...this.state.rules].sort((a, b) => a.priority - b.priority);
   }
 
   saveRules(rules: RoutingRule[]): void {
@@ -775,15 +420,21 @@ class GatewayStore {
 
   addLog(log: RequestLog): void {
     this.state.logs.unshift(log);
-    // Keep max 1000 logs
     if (this.state.logs.length > 1000) {
       this.state.logs.length = 1000;
     }
+    // Recalculate current monthly spend from logs in current UTC month
+    const monthPrefix = new Date().toISOString().slice(0, 7);
+    const monthSpent = this.state.logs
+      .filter((l) => l.timestamp.startsWith(monthPrefix))
+      .reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
+    this.state.settings.currentMonthlySpentUsd = Number(monthSpent.toFixed(5));
     this.saveToDisk();
   }
 
   clearLogs(): void {
     this.state.logs = [];
+    this.state.settings.currentMonthlySpentUsd = 0;
     this.saveToDisk();
   }
 
@@ -799,8 +450,14 @@ class GatewayStore {
   }
 
   // --- Analytics ---
-  getAnalytics(): GatewayAnalytics {
-    const logs = this.state.logs;
+  getAnalytics(range: 'today' | '7d' | '30d' = '7d'): GatewayAnalytics {
+    const daysCount = range === 'today' ? 1 : range === '30d' ? 30 : 7;
+    const cutoffMs = Date.now() - daysCount * 86400000;
+    const allLogs = this.state.logs;
+    const logs = range === 'today'
+      ? allLogs.filter((l) => l.timestamp.split('T')[0] === new Date().toISOString().split('T')[0])
+      : allLogs.filter((l) => new Date(l.timestamp).getTime() >= cutoffMs);
+
     const totalRequests = logs.length;
     const successfulRequests = logs.filter((l) => l.status === 'success' || l.status === 'fallback_success').length;
     const failedRequests = logs.filter((l) => l.status === 'error').length;
@@ -821,14 +478,14 @@ class GatewayStore {
       modelDistribution[m] = (modelDistribution[m] || 0) + 1;
     }
 
-    // Build 7-day timeline
+    const timelineDays = range === 'today' ? 1 : range === '30d' ? 14 : 7;
     const timelineMap: Record<string, { requests: number; tokens: number; costUsd: number; errors: number }> = {};
-    for (let i = 6; i >= 0; i--) {
+    for (let i = timelineDays - 1; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400000).toISOString().split('T')[0];
       timelineMap[d] = { requests: 0, tokens: 0, costUsd: 0, errors: 0 };
     }
 
-    for (const log of logs) {
+    for (const log of allLogs) {
       const day = log.timestamp.split('T')[0];
       if (timelineMap[day]) {
         timelineMap[day].requests += 1;
@@ -842,7 +499,7 @@ class GatewayStore {
       date,
       requests: data.requests,
       tokens: data.tokens,
-      costUsd: Number(data.costUsd.toFixed(4)),
+      costUsd: Number(data.costUsd.toFixed(5)),
       errors: data.errors,
     }));
 
@@ -852,7 +509,7 @@ class GatewayStore {
       failedRequests,
       totalInputTokens,
       totalOutputTokens,
-      totalEstimatedCostUsd: Number(totalEstimatedCostUsd.toFixed(4)),
+      totalEstimatedCostUsd: Number(totalEstimatedCostUsd.toFixed(5)),
       averageLatencyMs,
       providerDistribution,
       modelDistribution,
@@ -860,12 +517,11 @@ class GatewayStore {
     };
   }
 
-  // Export full non-secret configuration
   exportConfig(): string {
     const safeState = {
       providers: this.state.providers.map((p) => ({
         ...p,
-        apiKey: undefined, // Never export secrets
+        apiKey: undefined,
       })),
       models: this.state.models,
       aliases: this.state.aliases,
@@ -878,15 +534,16 @@ class GatewayStore {
     return JSON.stringify(safeState, null, 2);
   }
 
-  // Import configuration
   importConfig(jsonStr: string): boolean {
     try {
       const parsed = JSON.parse(jsonStr);
-      if (parsed.models) this.state.models = parsed.models;
-      if (parsed.aliases) this.state.aliases = parsed.aliases;
-      if (parsed.combos) this.state.combos = parsed.combos;
-      if (parsed.rules) this.state.rules = parsed.rules;
-      if (parsed.settings) this.state.settings = { ...this.state.settings, ...parsed.settings };
+      if (Array.isArray(parsed.models)) this.state.models = parsed.models;
+      if (Array.isArray(parsed.aliases)) this.state.aliases = parsed.aliases;
+      if (Array.isArray(parsed.combos)) this.state.combos = parsed.combos;
+      if (Array.isArray(parsed.rules)) this.state.rules = parsed.rules;
+      if (parsed.settings && typeof parsed.settings === 'object') {
+        this.state.settings = { ...this.state.settings, ...parsed.settings };
+      }
       this.saveToDisk();
       return true;
     } catch (err) {
@@ -894,7 +551,11 @@ class GatewayStore {
       return false;
     }
   }
+
+  resetState(): void {
+    this.state = this.createFreshState();
+    this.saveToDisk();
+  }
 }
 
 export const db = new GatewayStore();
-export { DEFAULT_KEY_RAW };

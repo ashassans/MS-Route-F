@@ -2,13 +2,10 @@ import React, { useState } from 'react';
 import {
   FileText,
   Search,
-  CheckCircle2,
-  AlertCircle,
   Trash2,
   ChevronRight,
-  Info,
 } from 'lucide-react';
-import { RequestLog } from '../../types/gateway.ts';
+import type { RequestLog } from '../../types/gateway.ts';
 
 interface RequestLogsViewProps {
   logs: RequestLog[];
@@ -19,6 +16,8 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'fallback_success' | 'error'>('all');
   const [selectedLog, setSelectedLog] = useState<RequestLog | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const filteredLogs = logs.filter((log) => {
     const matchesSearch =
@@ -31,12 +30,14 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
   });
 
   const handleClearLogs = async () => {
-    if (!confirm('Clear all request logs?')) return;
+    setErrorMsg(null);
     try {
-      await fetch('/api/logs', { method: 'DELETE' });
+      const res = await fetch('/api/logs', { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to clear request logs');
+      setConfirmClear(false);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      setErrorMsg(err.message);
     }
   };
 
@@ -54,14 +55,41 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
           </p>
         </div>
 
-        <button
-          onClick={handleClearLogs}
-          className="px-3.5 py-2 bg-white hover:bg-rose-50 text-stone-700 hover:text-rose-700 border border-[#e4ded5] hover:border-rose-200 rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs shrink-0"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          <span>Clear Logs</span>
-        </button>
+        {confirmClear ? (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleClearLogs}
+              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-bold transition cursor-pointer"
+            >
+              Confirm Clear All
+            </button>
+            <button
+              onClick={() => setConfirmClear(false)}
+              className="px-3 py-2 bg-white hover:bg-stone-100 text-stone-700 border border-[#e4ded5] rounded-2xl text-xs font-semibold transition cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmClear(true)}
+            disabled={logs.length === 0}
+            className="px-3.5 py-2 bg-white hover:bg-rose-50 text-stone-700 hover:text-rose-700 border border-[#e4ded5] hover:border-rose-200 rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs shrink-0 disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Clear Logs</span>
+          </button>
+        )}
       </div>
+
+      {errorMsg && (
+        <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="font-semibold underline ml-3 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Filter Row */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -83,7 +111,7 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
               statusFilter === 'all' ? 'bg-white text-stone-900 shadow-xs' : 'text-stone-500 hover:text-stone-800'
             }`}
           >
-            All Logs
+            All Logs ({logs.length})
           </button>
           <button
             onClick={() => setStatusFilter('success')}
@@ -128,48 +156,63 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f5f0e8]">
-              {filteredLogs.map((log) => {
-                const isSuccess = log.status === 'success' || log.status === 'fallback_success';
-                const isFallback = log.status === 'fallback_success';
-                return (
-                  <tr
-                    key={log.id}
-                    onClick={() => setSelectedLog(log)}
-                    className="hover:bg-[#faf8f5] transition cursor-pointer"
-                  >
-                    <td className="p-4 text-stone-500 font-mono text-[11px]">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </td>
-                    <td className="p-4">
-                      {isFallback ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#eff6fe] text-[#1e40af] border border-[#bfdbfe]">
-                          Failover 200
-                        </span>
-                      ) : isSuccess ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ecf7ef] text-[#166534] border border-[#cbe8d2]">
-                          200 OK
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fef2f2] text-[#991b1b] border border-[#fecaca]">
-                          {log.statusCode || 500}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 font-mono text-stone-800 font-semibold">{log.requestedModel}</td>
-                    <td className="p-4 font-mono text-stone-600">
-                      <span className="font-semibold text-stone-800">{log.resolvedModel || log.requestedModel}</span>
-                      <span className="text-stone-400 text-[10px] ml-1">({log.selectedProvider})</span>
-                    </td>
-                    <td className="p-4 font-mono text-stone-700">
-                      {(log.inputTokens || 0) + (log.outputTokens || 0)}
-                    </td>
-                    <td className="p-4 font-mono text-stone-700 font-semibold">{log.latencyMs}ms</td>
-                    <td className="p-4 text-right">
-                      <ChevronRight className="w-4 h-4 text-stone-400 inline" />
-                    </td>
-                  </tr>
-                );
-              })}
+              {filteredLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-stone-500">
+                    {logs.length === 0
+                      ? 'No gateway requests have been recorded yet. Send traffic via /v1/messages, /v1/chat/completions, or the API Playground to inspect live traces.'
+                      : 'No request logs match your current search or status filter.'}
+                  </td>
+                </tr>
+              ) : (
+                filteredLogs.map((log) => {
+                  const isSuccess = log.status === 'success' || log.status === 'fallback_success';
+                  const isFallback = log.status === 'fallback_success';
+                  return (
+                    <tr
+                      key={log.id}
+                      onClick={() => setSelectedLog(log)}
+                      className="hover:bg-[#faf8f5] transition cursor-pointer"
+                    >
+                      <td className="p-4 text-stone-500 font-mono text-[11px]">
+                        {new Date(log.timestamp).toLocaleTimeString([], {
+                          hour12: false,
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </td>
+                      <td className="p-4">
+                        {isFallback ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#eff6fe] text-[#1e40af] border border-[#bfdbfe]">
+                            Failover 200
+                          </span>
+                        ) : isSuccess ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ecf7ef] text-[#166534] border border-[#cbe8d2]">
+                            200 OK
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fef2f2] text-[#991b1b] border border-[#fecaca]">
+                            {log.statusCode || 500}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 font-mono text-stone-800 font-semibold">{log.requestedModel}</td>
+                      <td className="p-4 font-mono text-stone-600">
+                        <span className="font-semibold text-stone-800">{log.resolvedModel || log.requestedModel}</span>
+                        <span className="text-stone-400 text-[10px] ml-1">({log.selectedProvider})</span>
+                      </td>
+                      <td className="p-4 font-mono text-stone-700">
+                        {(log.inputTokens || 0) + (log.outputTokens || 0)}
+                      </td>
+                      <td className="p-4 font-mono text-stone-700 font-semibold">{log.latencyMs}ms</td>
+                      <td className="p-4 text-right">
+                        <ChevronRight className="w-4 h-4 text-stone-400 inline" />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -195,7 +238,9 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#e8e2d8]">
                 <span className="text-stone-500 block font-medium">Protocol & Client</span>
-                <span className="font-mono font-bold text-stone-800">{selectedLog.protocol}</span>
+                <span className="font-mono font-bold text-stone-800">
+                  {selectedLog.endpoint} ({selectedLog.clientType})
+                </span>
               </div>
               <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#e8e2d8]">
                 <span className="text-stone-500 block font-medium">Estimated Cost</span>

@@ -13,15 +13,23 @@ import {
   HeartPulse,
   Sliders,
   Sparkles,
+  User as UserIcon,
 } from 'lucide-react';
+import type { User } from 'firebase/auth';
 
 interface SidebarProps {
   currentView: string;
   onSelectView: (view: string) => void;
   errorCount?: number;
+  currentUser: User | null;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onSelectView, errorCount = 0 }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  currentView,
+  onSelectView,
+  errorCount = 0,
+  currentUser,
+}) => {
   const navItems = [
     { id: 'overview', label: 'Overview', icon: LayoutGrid },
     { id: 'providers', label: 'Providers', icon: Radio },
@@ -36,6 +44,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onSelectView, err
     { id: 'health', label: 'Health Matrix', icon: HeartPulse, errorBadge: errorCount > 0 },
     { id: 'settings', label: 'Settings', icon: Sliders },
   ];
+
+  const initials = currentUser?.displayName
+    ? currentUser.displayName
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : currentUser?.email
+      ? currentUser.email.slice(0, 2).toUpperCase()
+      : null;
 
   return (
     <aside className="w-64 border-r border-[#dbe7df] bg-[#eff5f1] flex flex-col shrink-0 h-screen sticky top-0 text-stone-800 select-none">
@@ -141,12 +160,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onSelectView, err
       {/* Cloud Owner Footer */}
       <div className="p-4 border-t border-[#dbe7df] bg-[#e8f1eb]/70">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#dbeafe] text-[#1e40af] border border-[#bfdbfe] flex items-center justify-center text-xs font-bold">
-            DG
-          </div>
+          {currentUser?.photoURL ? (
+            <img src={currentUser.photoURL} alt="User" className="w-8 h-8 rounded-full border border-[#c5decb]" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-[#dbeafe] text-[#1e40af] border border-[#bfdbfe] flex items-center justify-center text-xs font-bold shrink-0">
+              {initials || <UserIcon className="w-4 h-4" />}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-stone-800 truncate">Owner Account</p>
-            <p className="text-[11px] text-[#617468] truncate">digonto9191@gmail.com</p>
+            <p className="text-xs font-semibold text-stone-800 truncate">
+              {currentUser ? currentUser.displayName || 'Gateway Owner' : 'Not Signed In'}
+            </p>
+            <p className="text-[11px] text-[#617468] truncate">
+              {currentUser?.email || 'Connect Google Auth in header'}
+            </p>
           </div>
         </div>
       </div>

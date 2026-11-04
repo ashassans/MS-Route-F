@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   GitBranch,
   CheckCircle2,
@@ -8,8 +8,10 @@ import {
   Eye,
   Layers,
   Save,
+  Plus,
+  Trash2,
 } from 'lucide-react';
-import { RoutingRule, RoutingMode, GatewaySettings, ModelConfig, ComboConfig } from '../../types/gateway.ts';
+import type { RoutingRule, RoutingMode, GatewaySettings, ModelConfig, ComboConfig } from '../../types/gateway.ts';
 
 interface RoutingViewProps {
   rules: RoutingRule[];
@@ -26,32 +28,107 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
   combos,
   onRefresh,
 }) => {
-  const [currentMode, setCurrentMode] = useState<RoutingMode>(settings?.defaultRoutingMode || 'combo');
+  const [currentMode, setCurrentMode] = useState<RoutingMode>(settings?.defaultRoutingMode || 'auto');
   const [defaultModelId, setDefaultModelId] = useState(settings?.defaultModelId || models[0]?.id || '');
   const [defaultComboId, setDefaultComboId] = useState(settings?.defaultComboId || combos[0]?.id || '');
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+  const [ruleForm, setRuleForm] = useState({
+    name: '',
+    taskType: 'coding' as RoutingRule['taskType'],
+    targetType: 'model' as 'model' | 'combo',
+    targetId: models[0]?.id || '',
+    priority: 1,
+  });
+
+  useEffect(() => {
+    if (settings) {
+      setCurrentMode(settings.defaultRoutingMode || 'auto');
+      setDefaultModelId(settings.defaultModelId || models[0]?.id || '');
+      setDefaultComboId(settings.defaultComboId || combos[0]?.id || '');
+    }
+  }, [settings, models, combos]);
 
   const handleSaveMode = async () => {
     setSaving(true);
     setSaveSuccess(false);
+    setErrorMsg(null);
     try {
-      await fetch('/api/settings', {
+      const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           defaultRoutingMode: currentMode,
           defaultModelId,
-          defaultComboId,
+          defaultComboId: defaultComboId || undefined,
         }),
       });
+      if (!res.ok) throw new Error('Failed to save routing strategy');
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      setErrorMsg(err.message || 'Unable to save routing settings');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleOpenAddRule = () => {
+    const defaultType: 'model' | 'combo' = models.length > 0 ? 'model' : 'combo';
+    setRuleForm({
+      name: '',
+      taskType: 'coding',
+      targetType: defaultType,
+      targetId: defaultType === 'model' ? models[0]?.id || '' : combos[0]?.id || '',
+      priority: rules.length + 1,
+    });
+    setIsRuleModalOpen(true);
+  };
+
+  const handleCreateRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ruleForm.name.trim() || !ruleForm.targetId) return;
+
+    const newRule: RoutingRule = {
+      id: `rule-${Date.now()}`,
+      name: ruleForm.name.trim(),
+      taskType: ruleForm.taskType,
+      description: `${ruleForm.taskType} task rule`,
+      preferredComboId: ruleForm.targetType === 'combo' ? ruleForm.targetId : undefined,
+      preferredModelId: ruleForm.targetType === 'model' ? ruleForm.targetId : undefined,
+      priority: Number(ruleForm.priority) || 1,
+    };
+
+    try {
+      const res = await fetch('/api/rules', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([...rules, newRule]),
+      });
+      if (!res.ok) throw new Error('Failed to save routing rule');
+      setIsRuleModalOpen(false);
+      onRefresh();
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleDeleteRule = async (id: string) => {
+    try {
+      const updated = rules.filter((r) => r.id !== id);
+      const res = await fetch('/api/rules', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      if (!res.ok) throw new Error('Failed to remove rule');
+      onRefresh();
+    } catch (err: any) {
+      setErrorMsg(err.message);
     }
   };
 
@@ -72,6 +149,15 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
 
   return (
     <div className="space-y-6">
+      {errorMsg && (
+        <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="font-semibold underline ml-3 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Mode Selection Cards */}
       <div className="bg-white border border-[#e8e2d8] rounded-3xl p-6 shadow-xs">
         <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2 mb-2">
@@ -97,15 +183,15 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#1c4d32]">Strategy A</span>
                 {currentMode === 'combo' && <CheckCircle2 className="w-4 h-4 text-[#16a34a]" />}
               </div>
-              <h3 className="font-bold text-sm text-stone-900">Combo Routing (Recommended)</h3>
+              <h3 className="font-bold text-sm text-stone-900">Combo Routing</h3>
               <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                Dispatches requests through a failover combo pipeline (Anthropic → Gemini → DeepSeek).
+                Dispatches requests through a multi-provider sequential failover, parallel race, or weighted combo pipeline.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-[#d8e8dd] text-xs text-stone-600">
               Active:{' '}
               <span className="font-semibold text-stone-900 font-mono">
-                {combos.find((c) => c.id === defaultComboId)?.name || 'Production Failover'}
+                {combos.find((c) => c.id === defaultComboId)?.name || 'None configured'}
               </span>
             </div>
           </div>
@@ -126,7 +212,7 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
               </div>
               <h3 className="font-bold text-sm text-stone-900">Auto Task-Based Routing</h3>
               <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                Inspects prompt characteristics and tool requirements to dynamically route requests.
+                Inspects prompt characteristics, vision attachments, and tool schemas to dynamically classify and route requests.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-[#d8e8dd] text-xs text-stone-600">
@@ -150,13 +236,13 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
               </div>
               <h3 className="font-bold text-sm text-stone-900">Direct Manual Routing</h3>
               <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                Passes through directly to the requested model without automatic tiering.
+                Passes through directly to the requested upstream model or fallback default without task classification.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-[#d8e8dd] text-xs text-stone-600">
               Default:{' '}
               <span className="font-semibold text-stone-900 font-mono">
-                {models.find((m) => m.id === defaultModelId)?.displayName || 'Claude 3.7 Sonnet'}
+                {models.find((m) => m.id === defaultModelId)?.displayName || 'None configured'}
               </span>
             </div>
           </div>
@@ -171,11 +257,15 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
               onChange={(e) => setDefaultComboId(e.target.value)}
               className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
             >
-              {combos.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.strategy})
-                </option>
-              ))}
+              {combos.length === 0 ? (
+                <option value="">No combos created yet</option>
+              ) : (
+                combos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.strategy})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -186,11 +276,15 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
               onChange={(e) => setDefaultModelId(e.target.value)}
               className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
             >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.displayName} ({m.id})
-                </option>
-              ))}
+              {models.length === 0 ? (
+                <option value="">No models registered yet</option>
+              ) : (
+                models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName} ({m.id})
+                  </option>
+                ))
+              )}
             </select>
           </div>
         </div>
@@ -218,8 +312,17 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
 
       {/* Rules Table */}
       <div className="bg-white border border-[#e8e2d8] rounded-3xl overflow-hidden shadow-xs">
-        <div className="p-5 border-b border-[#f0eae1]">
+        <div className="p-5 border-b border-[#f0eae1] flex items-center justify-between">
           <h3 className="font-bold text-sm text-stone-900">Configured Task Routing Rules ({rules.length})</h3>
+          <button
+            onClick={handleOpenAddRule}
+            disabled={models.length === 0 && combos.length === 0}
+            className="px-3.5 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+            title={models.length === 0 && combos.length === 0 ? 'Add a model or combo first' : 'Add routing rule'}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Rule</span>
+          </button>
         </div>
 
         <div className="overflow-x-auto">
@@ -228,32 +331,159 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
               <tr className="border-b border-[#f0eae1] bg-[#faf8f5] text-stone-600 font-semibold">
                 <th className="p-4">Task Category</th>
                 <th className="p-4">Rule Name</th>
-                <th className="p-4">Target Model</th>
+                <th className="p-4">Target Destination</th>
                 <th className="p-4">Priority</th>
-                <th className="p-4 text-right">Status</th>
+                <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f5f0e8]">
-              {rules.map((r) => (
-                <tr key={r.id} className="hover:bg-[#faf8f5] transition">
-                  <td className="p-4 font-medium flex items-center gap-2">
-                    {getTaskIcon(r.taskType)}
-                    <span className="capitalize text-stone-800">{r.taskType}</span>
-                  </td>
-                  <td className="p-4 font-semibold text-stone-900">{r.name}</td>
-                  <td className="p-4 font-mono text-[#a16207] font-semibold">{r.targetModelId}</td>
-                  <td className="p-4 text-stone-600">Level {r.priority}</td>
-                  <td className="p-4 text-right">
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#e2f1e6] text-[#1e5c36]">
-                      Active
-                    </span>
+              {rules.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-stone-500">
+                    No task routing rules configured yet. Auto mode uses built-in capability heuristics until custom task rules are added.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                rules.map((r) => (
+                  <tr key={r.id} className="hover:bg-[#faf8f5] transition">
+                    <td className="p-4 font-medium flex items-center gap-2">
+                      {getTaskIcon(r.taskType)}
+                      <span className="capitalize text-stone-800">{r.taskType}</span>
+                    </td>
+                    <td className="p-4 font-semibold text-stone-900">{r.name}</td>
+                    <td className="p-4 font-mono text-[#a16207] font-semibold">
+                      {r.preferredComboId || r.preferredModelId || 'Default'}
+                    </td>
+                    <td className="p-4 text-stone-600">Level {r.priority}</td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => handleDeleteRule(r.id)}
+                        className="p-1.5 text-stone-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                        title="Remove rule"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Add Rule Modal */}
+      {isRuleModalOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-[#e8e2d8] rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#f0eae1] pb-3">
+              <h3 className="font-editorial text-xl font-medium text-stone-900">Create Task Routing Rule</h3>
+              <button onClick={() => setIsRuleModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRule} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-stone-600 mb-1 font-semibold">Rule Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={ruleForm.name}
+                  onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
+                  placeholder="e.g. Route Code & Tool Calls"
+                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-stone-600 mb-1 font-semibold">Task Category</label>
+                  <select
+                    value={ruleForm.taskType}
+                    onChange={(e) => setRuleForm({ ...ruleForm, taskType: e.target.value as RoutingRule['taskType'] })}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800"
+                  >
+                    <option value="coding">Coding & Tools</option>
+                    <option value="reasoning">Deep Reasoning</option>
+                    <option value="vision">Vision & Multimodal</option>
+                    <option value="fast">Fast / Low Latency</option>
+                    <option value="default">Default Catch-All</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-stone-600 mb-1 font-semibold">Priority (1 = highest)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={ruleForm.priority}
+                    onChange={(e) => setRuleForm({ ...ruleForm, priority: Number(e.target.value) })}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-stone-600 mb-1 font-semibold">Target Type</label>
+                  <select
+                    value={ruleForm.targetType}
+                    onChange={(e) => {
+                      const nextType = e.target.value as 'model' | 'combo';
+                      const nextId = nextType === 'model' ? models[0]?.id || '' : combos[0]?.id || '';
+                      setRuleForm({ ...ruleForm, targetType: nextType, targetId: nextId });
+                    }}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800"
+                  >
+                    <option value="model">Model</option>
+                    <option value="combo">Combo</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-stone-600 mb-1 font-semibold">Destination *</label>
+                  <select
+                    value={ruleForm.targetId}
+                    onChange={(e) => setRuleForm({ ...ruleForm, targetId: e.target.value })}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono"
+                  >
+                    {ruleForm.targetType === 'model'
+                      ? models.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.displayName}
+                          </option>
+                        ))
+                      : combos.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f0eae1]">
+                <button
+                  type="button"
+                  onClick={() => setIsRuleModalOpen(false)}
+                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!ruleForm.targetId}
+                  className="px-5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                >
+                  Save Rule
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

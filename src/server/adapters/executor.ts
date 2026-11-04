@@ -1,7 +1,109 @@
-import { GoogleGenAI } from '@google/genai';
-import { ProviderConfig, ModelConfig } from '../../types/gateway.ts';
+import { GoogleGenAI, Type } from '@google/genai';
+import type { ProviderConfig, ModelConfig } from '../../types/gateway.ts';
 import { decryptSecret } from '../security/encryption.ts';
-import { UnifiedChatRequest, UnifiedChatResponse, UnifiedStreamChunk } from './types.ts';
+import type { UnifiedChatRequest, UnifiedChatResponse, UnifiedStreamChunk } from './types.ts';
+
+/**
+ * Resolves the real API key for a specific provider without cross-provider leakage.
+ */
+export function resolveProviderApiKey(provider: ProviderConfig): string {
+  const stored = decryptSecret(provider.apiKey || '').trim();
+  if (stored) return stored;
+
+  switch (provider.type) {
+    case 'gemini':
+      return (process.env.GEMINI_API_KEY || '').trim();
+    case 'anthropic':
+      return (process.env.ANTHROPIC_API_KEY || '').trim();
+    case 'openai':
+      return (process.env.OPENAI_API_KEY || '').trim();
+    case 'deepseek':
+      return (process.env.DEEPSEEK_API_KEY || '').trim();
+    case 'groq':
+      return (process.env.GROQ_API_KEY || '').trim();
+    case 'openrouter':
+      return (process.env.OPENROUTER_API_KEY || '').trim();
+    default:
+      return '';
+  }
+}
+
+/**
+ * Performs a real connectivity and authentication check against the upstream provider.
+ */
+export async function pingProviderConnection(provider: ProviderConfig): Promise<{ latencyMs: number; modelsCount?: number }> {
+  const apiKey = resolveProviderApiKey(provider);
+  const start = Date.now();
+
+  if (!apiKey && provider.type !== 'custom') {
+    throw new Error(`401 Unauthorized: No API key configured for ${provider.name}. Add an API key in Providers.`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.min(provider.timeoutMs || 15000, 15000));
+
+  try {
+    if (provider.protocol === 'google-gemini' || provider.type === 'gemini') {
+      const base = (provider.baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
+      const res = await fetch(`${base}/v1beta/models?pageSize=5&key=${encodeURIComponent(apiKey)}`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Gemini API (${res.status}): ${body.slice(0, 180)}`);
+      }
+      const data = await res.json();
+      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data.models) ? data.models.length : undefined };
+    }
+
+    if (provider.protocol === 'anthropic-messages' || provider.type === 'anthropic') {
+      const base = (provider.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '');
+      const url = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          ...(provider.customHeaders || {}),
+        },
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Anthropic API (${res.status}): ${body.slice(0, 180)}`);
+      }
+      const data = await res.json();
+      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data.data) ? data.data.length : undefined };
+    }
+
+    // OpenAI-compatible & Custom HTTP endpoints
+    const base = provider.baseUrl.replace(/\/$/, '');
+    const modelsUrl = base.endsWith('/v1') || base.includes('/openai') ? `${base}/models` : `${base}/v1/models`;
+    const headers: Record<string, string> = {
+      ...(provider.customHeaders || {}),
+    };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const res = await fetch(modelsUrl, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${provider.name} (${res.status}): ${body.slice(0, 180)}`);
+    }
+
+    const data = await res.json().catch(() => ({}));
+    return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data?.data) ? data.data.length : undefined };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 export async function executeProviderRequest(
   provider: ProviderConfig,
@@ -9,53 +111,25 @@ export async function executeProviderRequest(
   unifiedReq: UnifiedChatRequest,
   signal?: AbortSignal
 ): Promise<UnifiedChatResponse> {
-  const rawKey = decryptSecret(provider.apiKey || '') || process.env.GEMINI_API_KEY || '';
+  const rawKey = resolveProviderApiKey(provider);
 
-  // 1. Google Gemini Provider
+  if (!rawKey && provider.type !== 'custom') {
+    throw new Error(`401 Unauthorized: Missing API key for provider "${provider.name}". Please configure a valid API key.`);
+  }
+
   if (provider.protocol === 'google-gemini' || provider.type === 'gemini') {
-    if (rawKey && !rawKey.includes('MY_GEMINI_API_KEY') && !rawKey.includes('demo') && rawKey.startsWith('AIza')) {
-      try {
-        return await executeGemini(provider, modelConfig, unifiedReq, rawKey);
-      } catch (err) {
-        console.warn('Gemini execution error, using fallback:', err);
-      }
-    }
+    return await executeGemini(provider, modelConfig, unifiedReq, rawKey);
   }
 
-  // 2. Anthropic Native Messages Provider
   if (provider.protocol === 'anthropic-messages' || provider.type === 'anthropic') {
-    if (rawKey && !rawKey.includes('demo') && rawKey.startsWith('sk-ant')) {
-      try {
-        return await executeAnthropicNative(provider, modelConfig, unifiedReq, rawKey, signal);
-      } catch (err) {
-        console.warn('Anthropic execution error, using fallback:', err);
-      }
-    }
+    return await executeAnthropicNative(provider, modelConfig, unifiedReq, rawKey, signal);
   }
 
-  // 3. OpenAI or OpenAI-Compatible Providers (DeepSeek, Groq, OpenRouter, etc.)
-  if (
-    provider.protocol === 'openai-chat' ||
-    provider.protocol === 'openai-responses' ||
-    provider.type === 'openai' ||
-    provider.type === 'deepseek' ||
-    provider.type === 'groq' ||
-    provider.type === 'openrouter'
-  ) {
-    if (rawKey && !rawKey.includes('demo') && rawKey.startsWith('sk-')) {
-      try {
-        return await executeOpenAiCompatible(provider, modelConfig, unifiedReq, rawKey, signal);
-      } catch (err) {
-        console.warn('OpenAI compatible execution error, using fallback:', err);
-      }
-    }
-  }
-
-  return generateSimulatedResponse(provider, modelConfig, unifiedReq);
+  return await executeOpenAiCompatible(provider, modelConfig, unifiedReq, rawKey, signal);
 }
 
 /**
- * Streaming Generator for provider execution
+ * Real Streaming Generator for upstream AI providers (Gemini SDK, Anthropic SSE, OpenAI SSE).
  */
 export async function* executeProviderStream(
   provider: ProviderConfig,
@@ -63,119 +137,306 @@ export async function* executeProviderStream(
   unifiedReq: UnifiedChatRequest,
   signal?: AbortSignal
 ): AsyncGenerator<UnifiedStreamChunk> {
-  const rawKey = decryptSecret(provider.apiKey || '') || process.env.GEMINI_API_KEY || '';
+  const rawKey = resolveProviderApiKey(provider);
 
-  // Try real Gemini streaming if Gemini or if key available
-  if (
-    (provider.protocol === 'google-gemini' || provider.type === 'gemini') &&
-    (rawKey || process.env.GEMINI_API_KEY)
-  ) {
-    const apiKey = rawKey || process.env.GEMINI_API_KEY || '';
-    if (apiKey && !apiKey.includes('MY_GEMINI_API_KEY') && !apiKey.includes('demo') && apiKey.startsWith('AIza')) {
-      try {
-        const ai = new GoogleGenAI({ apiKey });
-        const apiModel = modelConfig.apiModelName || 'gemini-2.5-flash';
+  if (!rawKey && provider.type !== 'custom') {
+    throw new Error(`401 Unauthorized: Missing API key for provider "${provider.name}". Please configure a valid API key.`);
+  }
 
-      const promptParts = unifiedReq.messages.map((m) => {
-        const textContent = typeof m.content === 'string'
-          ? m.content
-          : Array.isArray(m.content)
-            ? m.content.map((b: any) => b.text || '').join(' ')
-            : '';
-        return `${m.role.toUpperCase()}: ${textContent}`;
-      });
+  // 1. Google Gemini Native Stream
+  if (provider.protocol === 'google-gemini' || provider.type === 'gemini') {
+    const ai = new GoogleGenAI({ apiKey: rawKey });
+    const apiModel = modelConfig.apiModelName || 'gemini-2.5-flash';
 
-      const responseStream = await ai.models.generateContentStream({
-        model: apiModel,
-        contents: promptParts.join('\n\n'),
-        config: {
-          systemInstruction: unifiedReq.system || undefined,
-          temperature: unifiedReq.temperature,
-          maxOutputTokens: unifiedReq.maxTokens,
+    const promptParts = unifiedReq.messages.map((m) => {
+      const textContent = typeof m.content === 'string'
+        ? m.content
+        : Array.isArray(m.content)
+          ? m.content.map((b: any) => b.text || '').join(' ')
+          : '';
+      return `${m.role.toUpperCase()}: ${textContent}`;
+    });
+
+    const config: Record<string, any> = {
+      systemInstruction: unifiedReq.system || undefined,
+      temperature: unifiedReq.temperature,
+      maxOutputTokens: unifiedReq.maxTokens,
+    };
+
+    if (unifiedReq.tools && unifiedReq.tools.length > 0) {
+      config.tools = [
+        {
+          functionDeclarations: unifiedReq.tools.map((t) => ({
+            name: t.name,
+            description: t.description || '',
+            parameters: t.parameters || { type: Type.OBJECT, properties: {} },
+          })),
         },
-      });
+      ];
+    }
 
-      let totalOutputTokens = 0;
-      for await (const chunk of responseStream) {
-        if (signal?.aborted) break;
-        const text = chunk.text || '';
-        if (text) {
-          totalOutputTokens += Math.max(1, Math.floor(text.length / 4));
-          yield { type: 'delta', deltaText: text };
+    const responseStream = await ai.models.generateContentStream({
+      model: apiModel,
+      contents: promptParts.join('\n\n'),
+      config,
+    });
+
+    let totalInputTokens = Math.max(10, Math.floor(promptParts.join('\n\n').length / 4));
+    let totalOutputTokens = 0;
+    let finishReason = 'end_turn';
+
+    for await (const chunk of responseStream) {
+      if (signal?.aborted) break;
+      if (chunk.usageMetadata?.promptTokenCount) {
+        totalInputTokens = chunk.usageMetadata.promptTokenCount;
+      }
+      if (chunk.usageMetadata?.candidatesTokenCount) {
+        totalOutputTokens = chunk.usageMetadata.candidatesTokenCount;
+      }
+      if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+        finishReason = 'tool_use';
+        for (const fc of chunk.functionCalls) {
+          yield {
+            type: 'tool_call',
+            toolCall: {
+              id: fc.id || `toolu_${Date.now()}`,
+              name: fc.name || 'tool',
+              argumentsDelta: JSON.stringify(fc.args || {}),
+            },
+          };
         }
       }
-
-      yield {
-        type: 'done',
-        inputTokens: 300,
-        outputTokens: totalOutputTokens || 50,
-        finishReason: 'stop',
-      };
-      return;
-      } catch (err) {
-        console.warn('Gemini stream failed, falling back to simulated stream:', err);
+      const text = chunk.text || '';
+      if (text) {
+        if (!chunk.usageMetadata?.candidatesTokenCount) {
+          totalOutputTokens += Math.max(1, Math.floor(text.length / 4));
+        }
+        yield { type: 'delta', deltaText: text };
       }
     }
+
+    yield {
+      type: 'done',
+      inputTokens: totalInputTokens,
+      outputTokens: Math.max(1, totalOutputTokens),
+      finishReason,
+    };
+    return;
   }
 
-  // If real Anthropic or OpenAI API key is configured
-  if (rawKey && !rawKey.includes('demo') && rawKey.length > 10) {
-    try {
-      const res = await executeProviderRequest(provider, modelConfig, unifiedReq, signal);
-      const text = res.content || '';
-      const words = text.split(/(\s+)/);
-      for (const word of words) {
-        if (signal?.aborted) break;
-        yield { type: 'delta', deltaText: word };
-        await new Promise((r) => setTimeout(r, 15));
-      }
-      yield {
-        type: 'done',
-        inputTokens: res.usage.inputTokens,
-        outputTokens: res.usage.outputTokens,
-        finishReason: res.stopReason || 'stop',
-      };
-      return;
-    } catch (err) {
-      console.warn('Direct stream execution failed:', err);
-    }
-  }
+  // 2. Anthropic Messages Real SSE Stream
+  if (provider.protocol === 'anthropic-messages' || provider.type === 'anthropic') {
+    const base = (provider.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '');
+    const url = base.endsWith('/v1') ? `${base}/messages` : `${base}/v1/messages`;
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      'x-api-key': rawKey,
+      'anthropic-version': '2023-06-01',
+      ...(provider.customHeaders || {}),
+    };
 
-  // Simulated streaming chunks (perfect for Claude Code verification test suite and dev sandbox!)
-  const simulated = generateSimulatedResponse(provider, modelConfig, unifiedReq);
-
-  // If it requested tools, yield tool call
-  if (simulated.toolCalls && simulated.toolCalls.length > 0) {
-    for (const call of simulated.toolCalls) {
-      yield {
-        type: 'tool_call',
-        toolCall: {
-          id: call.id,
-          name: call.name,
-          argumentsDelta: call.arguments,
-        },
-      };
+    const body: Record<string, any> = {
+      model: modelConfig.apiModelName,
+      messages: unifiedReq.messages.map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      })),
+      max_tokens: unifiedReq.maxTokens || 4096,
+      stream: true,
+    };
+    if (unifiedReq.system) body.system = unifiedReq.system;
+    if (unifiedReq.temperature !== undefined) body.temperature = unifiedReq.temperature;
+    if (unifiedReq.tools && unifiedReq.tools.length > 0) {
+      body.tools = unifiedReq.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.parameters || { type: 'object' },
+      }));
     }
-  } else {
-    const text = simulated.content;
-    const chunks = text.match(/.{1,12}/g) || [text];
-    for (const chunk of chunks) {
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Anthropic API Error (${res.status}): ${errorText}`);
+    }
+
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let finishReason = 'end_turn';
+
+    for await (const dataStr of readSseLines(res)) {
       if (signal?.aborted) break;
-      yield { type: 'delta', deltaText: chunk };
-      await new Promise((r) => setTimeout(r, 20));
+      try {
+        const evt = JSON.parse(dataStr);
+        if (evt.type === 'message_start' && evt.message?.usage?.input_tokens) {
+          inputTokens = evt.message.usage.input_tokens;
+        } else if (evt.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
+          finishReason = 'tool_use';
+          yield {
+            type: 'tool_call',
+            toolCall: {
+              id: evt.content_block.id,
+              name: evt.content_block.name,
+              argumentsDelta: '',
+            },
+          };
+        } else if (evt.type === 'content_block_delta') {
+          if (evt.delta?.type === 'text_delta' && evt.delta.text) {
+            yield { type: 'delta', deltaText: evt.delta.text };
+          }
+        } else if (evt.type === 'message_delta') {
+          if (evt.delta?.stop_reason) finishReason = evt.delta.stop_reason;
+          if (evt.usage?.output_tokens) outputTokens = evt.usage.output_tokens;
+        }
+      } catch {
+        // Ignore non-JSON SSE keepalives
+      }
+    }
+
+    yield {
+      type: 'done',
+      inputTokens: inputTokens || 50,
+      outputTokens: outputTokens || 20,
+      finishReason,
+    };
+    return;
+  }
+
+  // 3. OpenAI-Compatible Real SSE Stream
+  const baseUrl = provider.baseUrl.replace(/\/$/, '');
+  const url = baseUrl.endsWith('/chat/completions')
+    ? baseUrl
+    : baseUrl.endsWith('/v1') || baseUrl.includes('/openai')
+      ? `${baseUrl}/chat/completions`
+      : `${baseUrl}/v1/chat/completions`;
+
+  const messages: any[] = [];
+  if (unifiedReq.system) {
+    messages.push({ role: 'system', content: unifiedReq.system });
+  }
+  for (const m of unifiedReq.messages) {
+    messages.push({
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      tool_calls: m.toolCalls,
+      tool_call_id: m.toolCallId,
+    });
+  }
+
+  const body: Record<string, any> = {
+    model: modelConfig.apiModelName,
+    messages,
+    max_tokens: unifiedReq.maxTokens || 4096,
+    stream: true,
+  };
+  if (unifiedReq.temperature !== undefined) body.temperature = unifiedReq.temperature;
+  if (unifiedReq.tools && unifiedReq.tools.length > 0) {
+    body.tools = unifiedReq.tools.map((t) => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters || { type: 'object' },
+      },
+    }));
+  }
+
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...(provider.customHeaders || {}),
+  };
+  if (rawKey) {
+    headers['Authorization'] = `Bearer ${rawKey}`;
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`${provider.name} API Error (${res.status}): ${errorText}`);
+  }
+
+  let outputTokens = 0;
+  let finishReason = 'stop';
+
+  for await (const dataStr of readSseLines(res)) {
+    if (signal?.aborted) break;
+    if (dataStr === '[DONE]') break;
+    try {
+      const parsed = JSON.parse(dataStr);
+      const choice = parsed.choices?.[0];
+      const delta = choice?.delta;
+      if (delta?.content) {
+        outputTokens += Math.max(1, Math.floor(delta.content.length / 4));
+        yield { type: 'delta', deltaText: delta.content };
+      }
+      if (Array.isArray(delta?.tool_calls)) {
+        for (const tc of delta.tool_calls) {
+          if (tc.function?.name || tc.id) {
+            yield {
+              type: 'tool_call',
+              toolCall: {
+                id: tc.id || `call_${Date.now()}`,
+                name: tc.function?.name,
+                argumentsDelta: tc.function?.arguments || '',
+              },
+            };
+          }
+        }
+      }
+      if (choice?.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+    } catch {
+      // Ignore partial comments
     }
   }
 
   yield {
     type: 'done',
-    inputTokens: simulated.usage.inputTokens,
-    outputTokens: simulated.usage.outputTokens,
-    finishReason: simulated.stopReason || 'stop',
+    inputTokens: Math.max(10, Math.floor(JSON.stringify(messages).length / 4)),
+    outputTokens: Math.max(1, outputTokens),
+    finishReason,
   };
 }
 
+async function* readSseLines(res: Response): AsyncGenerator<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('data:')) {
+        yield trimmed.slice(5).trim();
+      }
+    }
+  }
+  if (buffer.trim().startsWith('data:')) {
+    yield buffer.trim().slice(5).trim();
+  }
+}
+
 async function executeGemini(
-  provider: ProviderConfig,
+  _provider: ProviderConfig,
   modelConfig: ModelConfig,
   req: UnifiedChatRequest,
   apiKey: string
@@ -192,25 +453,46 @@ async function executeGemini(
     return `${m.role.toUpperCase()}: ${text}`;
   }).join('\n\n');
 
+  const config: Record<string, any> = {
+    systemInstruction: req.system || undefined,
+    temperature: req.temperature,
+    maxOutputTokens: req.maxTokens,
+  };
+
+  if (req.tools && req.tools.length > 0) {
+    config.tools = [
+      {
+        functionDeclarations: req.tools.map((t) => ({
+          name: t.name,
+          description: t.description || '',
+          parameters: t.parameters || { type: Type.OBJECT, properties: {} },
+        })),
+      },
+    ];
+  }
+
   const response = await ai.models.generateContent({
     model: modelName,
     contents,
-    config: {
-      systemInstruction: req.system || undefined,
-      temperature: req.temperature,
-      maxOutputTokens: req.maxTokens,
-    },
+    config,
   });
 
   const content = response.text || '';
-  const inputTokens = Math.max(10, Math.floor(contents.length / 4));
-  const outputTokens = Math.max(5, Math.floor(content.length / 4));
+  const toolCalls = response.functionCalls?.map((fc) => ({
+    id: fc.id || `toolu_${Date.now()}`,
+    name: fc.name || 'tool',
+    arguments: JSON.stringify(fc.args || {}),
+  }));
+
+  const inputTokens = response.usageMetadata?.promptTokenCount || Math.max(10, Math.floor(contents.length / 4));
+  const outputTokens = response.usageMetadata?.candidatesTokenCount || Math.max(5, Math.floor(content.length / 4));
 
   return {
     id: `msg_gemini_${Date.now()}`,
     model: modelConfig.id,
     content,
-    stopReason: 'end_turn',
+    toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+    stopReason: toolCalls && toolCalls.length > 0 ? 'tool_use' : 'end_turn',
     usage: { inputTokens, outputTokens },
   };
 }
@@ -222,7 +504,8 @@ async function executeAnthropicNative(
   apiKey: string,
   signal?: AbortSignal
 ): Promise<UnifiedChatResponse> {
-  const url = `${provider.baseUrl || 'https://api.anthropic.com'}/v1/messages`;
+  const base = (provider.baseUrl || 'https://api.anthropic.com').replace(/\/$/, '');
+  const url = base.endsWith('/v1') ? `${base}/messages` : `${base}/v1/messages`;
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'x-api-key': apiKey,
@@ -239,7 +522,8 @@ async function executeAnthropicNative(
     max_tokens: req.maxTokens || 4096,
   };
   if (req.system) body.system = req.system;
-  if (req.tools) {
+  if (req.temperature !== undefined) body.temperature = req.temperature;
+  if (req.tools && req.tools.length > 0) {
     body.tools = req.tools.map((t) => ({
       name: t.name,
       description: t.description,
@@ -261,21 +545,23 @@ async function executeAnthropicNative(
 
   const data = await res.json();
   const textBlock = data.content?.find((b: any) => b.type === 'text');
-  const toolBlock = data.content?.find((b: any) => b.type === 'tool_use');
+  const toolBlocks = Array.isArray(data.content) ? data.content.filter((b: any) => b.type === 'tool_use') : [];
 
   return {
     id: data.id || `msg_ant_${Date.now()}`,
     model: modelConfig.id,
     content: textBlock ? textBlock.text : '',
-    toolCalls: toolBlock ? [{
-      id: toolBlock.id,
-      name: toolBlock.name,
-      arguments: JSON.stringify(toolBlock.input || {}),
-    }] : undefined,
+    toolCalls: toolBlocks.length > 0
+      ? toolBlocks.map((tb: any) => ({
+          id: tb.id,
+          name: tb.name,
+          arguments: JSON.stringify(tb.input || {}),
+        }))
+      : undefined,
     stopReason: data.stop_reason || 'end_turn',
     usage: {
-      inputTokens: data.usage?.input_tokens || 100,
-      outputTokens: data.usage?.output_tokens || 50,
+      inputTokens: data.usage?.input_tokens || 0,
+      outputTokens: data.usage?.output_tokens || 0,
     },
   };
 }
@@ -288,7 +574,11 @@ async function executeOpenAiCompatible(
   signal?: AbortSignal
 ): Promise<UnifiedChatResponse> {
   const baseUrl = provider.baseUrl.replace(/\/$/, '');
-  const url = `${baseUrl}/chat/completions`;
+  const url = baseUrl.endsWith('/chat/completions')
+    ? baseUrl
+    : baseUrl.endsWith('/v1') || baseUrl.includes('/openai')
+      ? `${baseUrl}/chat/completions`
+      : `${baseUrl}/v1/chat/completions`;
 
   const messages: any[] = [];
   if (req.system) {
@@ -309,7 +599,7 @@ async function executeOpenAiCompatible(
     max_tokens: req.maxTokens || 4096,
   };
   if (req.temperature !== undefined) body.temperature = req.temperature;
-  if (req.tools) {
+  if (req.tools && req.tools.length > 0) {
     body.tools = req.tools.map((t) => ({
       type: 'function',
       function: {
@@ -320,13 +610,17 @@ async function executeOpenAiCompatible(
     }));
   }
 
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...(provider.customHeaders || {}),
+  };
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...(provider.customHeaders || {}),
-    },
+    headers,
     body: JSON.stringify(body),
     signal,
   });
@@ -351,54 +645,8 @@ async function executeOpenAiCompatible(
     })),
     stopReason: choice?.finish_reason || 'stop',
     usage: {
-      inputTokens: data.usage?.prompt_tokens || 80,
-      outputTokens: data.usage?.completion_tokens || 40,
-    },
-  };
-}
-
-/**
- * Intelligent deterministic response generator when running in dev/sandbox
- */
-function generateSimulatedResponse(
-  provider: ProviderConfig,
-  modelConfig: ModelConfig,
-  req: UnifiedChatRequest
-): UnifiedChatResponse {
-  const lastUserMsg = req.messages[req.messages.length - 1];
-  const prompt = typeof lastUserMsg?.content === 'string'
-    ? lastUserMsg.content
-    : JSON.stringify(lastUserMsg?.content || '');
-
-  // Check if request requires tool use
-  if (req.tools && req.tools.length > 0 && prompt.toLowerCase().includes('tool')) {
-    const firstTool = req.tools[0];
-    return {
-      id: `msg_tool_${Date.now()}`,
-      model: modelConfig.id,
-      content: `I will use the ${firstTool.name} tool to help you with that request.`,
-      toolCalls: [
-        {
-          id: `toolu_${Date.now()}`,
-          name: firstTool.name,
-          arguments: JSON.stringify({ query: 'test inspection', parameters: {} }),
-        },
-      ],
-      stopReason: 'tool_use',
-      usage: { inputTokens: 420, outputTokens: 85 },
-    };
-  }
-
-  const responseText = `[NexusGate AI Gateway] Responded via provider: ${provider.name} (${modelConfig.displayName})\n\nReceived your message: "${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}"\n\nGateway routing, headers, and protocol formatting verified successfully.`;
-
-  return {
-    id: `msg_nexus_${Date.now()}`,
-    model: modelConfig.id,
-    content: responseText,
-    stopReason: 'end_turn',
-    usage: {
-      inputTokens: Math.max(50, Math.floor(prompt.length / 3)),
-      outputTokens: Math.max(30, Math.floor(responseText.length / 4)),
+      inputTokens: data.usage?.prompt_tokens || 0,
+      outputTokens: data.usage?.completion_tokens || 0,
     },
   };
 }

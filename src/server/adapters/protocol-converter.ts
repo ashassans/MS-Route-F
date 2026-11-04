@@ -1,4 +1,4 @@
-import { UnifiedChatRequest, UnifiedMessage, UnifiedTool, UnifiedChatResponse } from './types.ts';
+import type { UnifiedChatRequest, UnifiedMessage, UnifiedTool, UnifiedChatResponse } from './types.ts';
 
 /**
  * Parses Anthropic Messages API request format into UnifiedChatRequest

@@ -6,33 +6,44 @@ import {
   Copy,
   Check,
   Play,
-  ExternalLink,
   ShieldCheck,
-  Cpu,
-  Layers,
-  Sparkles,
+  KeyRound,
 } from 'lucide-react';
-import { ClaudeSuiteReport } from '../../server/testing/claude-suite.ts';
-import { GatewayApiKey } from '../../types/gateway.ts';
+import type { ClaudeSuiteReport } from '../../server/testing/claude-suite.ts';
+import type { GatewayApiKey, ModelConfig, ComboConfig } from '../../types/gateway.ts';
 
 interface ClaudeCodeViewProps {
   apiKeys: GatewayApiKey[];
+  models: ModelConfig[];
+  combos: ComboConfig[];
+  onNavigate: (view: string) => void;
 }
 
-export const ClaudeCodeView: React.FC<ClaudeCodeViewProps> = ({ apiKeys }) => {
+export const ClaudeCodeView: React.FC<ClaudeCodeViewProps> = ({
+  apiKeys,
+  models,
+  combos,
+  onNavigate,
+}) => {
   const [copiedEnv, setCopiedEnv] = useState(false);
   const [testingSuite, setTestingSuite] = useState(false);
   const [suiteReport, setSuiteReport] = useState<ClaudeSuiteReport | null>(null);
+  const [suiteError, setSuiteError] = useState<string | null>(null);
 
-  const activeKey = apiKeys.find((k) => !k.revoked) || apiKeys[0];
+  const activeKey = apiKeys.find((k) => !k.revoked) || null;
   const gatewayUrl = typeof window !== 'undefined' ? window.location.origin : 'https://your-msroute-domain.com';
+
+  const sonnetTarget = combos[0]?.id || models[0]?.id || 'auto';
+  const opusTarget = models[0]?.id || combos[0]?.id || 'auto';
+  const haikuTarget = models[1]?.id || models[0]?.id || 'auto';
+  const tokenDisplay = activeKey ? `<YOUR_FULL_KEY_FOR_${activeKey.keyPrefix}>` : '<YOUR_MSROUTE_GATEWAY_KEY>';
 
   const bashConfig = `# MSRoute — Claude Code Configuration
 export ANTHROPIC_BASE_URL="${gatewayUrl}"
-export ANTHROPIC_AUTH_TOKEN="${activeKey?.keyPrefix || 'gw-live-master-key-prod-001'}"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="combo-prod-coding"
-export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-3-7-sonnet"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
+export ANTHROPIC_AUTH_TOKEN="${tokenDisplay}"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="${sonnetTarget}"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="${opusTarget}"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="${haikuTarget}"`;
 
   const handleCopyBash = () => {
     navigator.clipboard.writeText(bashConfig);
@@ -43,12 +54,14 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
   const handleRunSuite = async () => {
     setTestingSuite(true);
     setSuiteReport(null);
+    setSuiteError(null);
     try {
       const res = await fetch('/api/test/claude-suite', { method: 'POST' });
       const report: ClaudeSuiteReport = await res.json();
+      if (!res.ok) throw new Error((report as any).error || 'Compatibility suite failed');
       setSuiteReport(report);
     } catch (err: any) {
-      alert(`Error running compatibility suite: ${err.message}`);
+      setSuiteError(err.message || 'Error running compatibility suite');
     } finally {
       setTestingSuite(false);
     }
@@ -71,7 +84,7 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
               Claude Code Setup & Verification Suite
             </h2>
             <p className="text-xs text-stone-600 mt-1 max-w-2xl leading-relaxed">
-              Connect the official Anthropic Claude Code CLI tool through your private MSRoute Cloud gateway. Claude Code seamlessly leverages your multi-provider failover combos and zero-rate-limit resilience.
+              Connect the official Anthropic Claude Code CLI through your MSRoute Cloud gateway to route coding sessions across your configured providers and failover combos.
             </p>
           </div>
 
@@ -86,6 +99,32 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
         </div>
       </div>
 
+      {suiteError && (
+        <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between">
+          <span>{suiteError}</span>
+          <button onClick={() => setSuiteError(null)} className="font-semibold underline ml-3 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {!activeKey && (
+        <div className="bg-[#fff8ea] border border-[#fde4ad] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#8a5d15]">
+          <div className="flex items-center gap-2.5">
+            <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              No active gateway credential found. Generate a gateway key in <strong className="font-semibold">API Keys</strong> and paste it into <code className="font-mono">ANTHROPIC_AUTH_TOKEN</code>.
+            </span>
+          </div>
+          <button
+            onClick={() => onNavigate('keys')}
+            className="px-3.5 py-1.5 bg-white hover:bg-[#faf8f5] text-stone-800 border border-[#e5dfd5] rounded-xl font-semibold transition cursor-pointer shrink-0"
+          >
+            Generate Key →
+          </button>
+        </div>
+      )}
+
       {/* Terminal Configuration Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Step 1: Export Shell Environment */}
@@ -93,7 +132,9 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-sm text-stone-900 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd] flex items-center justify-center text-xs font-bold">1</span>
+                <span className="w-5 h-5 rounded-full bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd] flex items-center justify-center text-xs font-bold">
+                  1
+                </span>
                 Terminal Environment Configuration
               </h3>
               <button
@@ -105,7 +146,9 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
               </button>
             </div>
             <p className="text-xs text-stone-500 mb-3">
-              Add these variables to your <code className="text-stone-800 font-mono font-semibold bg-[#faf8f5] px-1 py-0.5 rounded">~/.zshrc</code>, <code className="text-stone-800 font-mono font-semibold bg-[#faf8f5] px-1 py-0.5 rounded">~/.bashrc</code>, or run them directly in your shell:
+              Add these variables to your{' '}
+              <code className="text-stone-800 font-mono font-semibold bg-[#faf8f5] px-1 py-0.5 rounded">~/.zshrc</code>,{' '}
+              <code className="text-stone-800 font-mono font-semibold bg-[#faf8f5] px-1 py-0.5 rounded">~/.bashrc</code>, or run them in your active shell:
             </p>
 
             <pre className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-4 text-xs font-mono text-stone-800 overflow-x-auto leading-relaxed select-all">
@@ -124,12 +167,14 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-sm text-stone-900 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd] flex items-center justify-center text-xs font-bold">2</span>
+                <span className="w-5 h-5 rounded-full bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd] flex items-center justify-center text-xs font-bold">
+                  2
+                </span>
                 Launch Claude Code
               </h3>
             </div>
             <p className="text-xs text-stone-500 mb-3">
-              Once the environment variables are active in your shell, launch Claude Code. All requests are routed through your cloud gateway:
+              Once the environment variables are exported in your terminal, launch Claude Code. Requests automatically translate across Anthropic, OpenAI, and Gemini protocols:
             </p>
 
             <div className="space-y-3">
@@ -139,14 +184,14 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
               </div>
 
               <div className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-3.5 font-mono text-xs text-[#0284c7] flex items-center justify-between font-semibold">
-                <span>$ claude "explain src/App.tsx"</span>
+                <span>$ claude &quot;explain src/App.tsx&quot;</span>
                 <span className="text-[10px] text-stone-400 font-normal">One-off query</span>
               </div>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-[#f0eae1] text-xs text-stone-500">
-            <span>All tool-use calls and streaming tokens are converted on-the-fly.</span>
+            <span>Tool-use blocks, system arrays, and SSE stream deltas are normalized automatically.</span>
           </div>
         </div>
       </div>
@@ -161,20 +206,24 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
                 Claude Code Compatibility Report
               </h3>
               <p className="text-xs text-stone-500 mt-0.5">
-                {suiteReport.checksPassed} of {suiteReport.totalChecks} verification checks passed ({suiteReport.summary})
+                {suiteReport.passedTests} of {suiteReport.totalTests} verification checks passed ({suiteReport.status.toUpperCase()})
               </p>
             </div>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-              suiteReport.allPassed ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
-            }`}>
-              {suiteReport.allPassed ? '100% Compatible' : 'Partial Pass'}
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-bold ${
+                suiteReport.status === 'passed'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}
+            >
+              {suiteReport.status === 'passed' ? '100% Compatible' : 'Partial Pass'}
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {suiteReport.details.map((check) => (
+            {suiteReport.checks.map((check) => (
               <div
-                key={check.step}
+                key={check.id}
                 className={`p-3.5 rounded-2xl border flex items-start gap-3 ${
                   check.passed ? 'bg-[#f7fbf8] border-[#d8edd9]' : 'bg-[#fff8f8] border-[#fcdada]'
                 }`}
@@ -187,7 +236,7 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-5-haiku"`;
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-stone-900">{check.name}</span>
-                    <span className="text-[10px] text-stone-500 font-mono">{check.latencyMs}ms</span>
+                    <span className="text-[10px] text-stone-500 font-mono">{check.durationMs}ms</span>
                   </div>
                   <p className="text-[11px] text-stone-600 mt-0.5">{check.details}</p>
                 </div>

@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
   Download,
   TrendingUp,
   Activity,
-  Layers,
 } from 'lucide-react';
-import { GatewayAnalytics } from '../../types/gateway.ts';
+import type { GatewayAnalytics } from '../../types/gateway.ts';
 
 interface AnalyticsViewProps {
   analytics: GatewayAnalytics | null;
@@ -14,8 +13,43 @@ interface AnalyticsViewProps {
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics }) => {
   const [timeRange, setTimeRange] = useState<'today' | '7d' | '30d'>('7d');
+  const [rangeAnalytics, setRangeAnalytics] = useState<GatewayAnalytics | null>(analytics);
 
-  const timeline = analytics?.timeline || [];
+  useEffect(() => {
+    if (timeRange === '7d' && analytics) {
+      setRangeAnalytics(analytics);
+    }
+  }, [analytics, timeRange]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRange = async () => {
+      try {
+        const res = await fetch(`/api/analytics?range=${timeRange}`);
+        if (res.ok && !cancelled) {
+          setRangeAnalytics(await res.json());
+        }
+      } catch {
+        // Keep current analytics snapshot on transient error
+      }
+    };
+    loadRange();
+    return () => {
+      cancelled = true;
+    };
+  }, [timeRange]);
+
+  const data = rangeAnalytics ?? analytics;
+  const timeline = data?.timeline || [];
+
+  const totalRequests = data?.totalRequests ?? 0;
+  const successfulRequests = data?.successfulRequests ?? 0;
+  const totalInputTokens = data?.totalInputTokens ?? 0;
+  const totalOutputTokens = data?.totalOutputTokens ?? 0;
+  const totalTokens = totalInputTokens + totalOutputTokens;
+  const totalEstimatedCostUsd = data?.totalEstimatedCostUsd ?? 0;
+  const averageLatencyMs = data?.averageLatencyMs ?? 0;
+
   const maxReq = Math.max(...timeline.map((t) => t.requests), 1);
   const maxTokens = Math.max(...timeline.map((t) => t.tokens), 1);
 
@@ -29,9 +63,77 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics }) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `msroute-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `msroute-analytics-${timeRange}-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const renderSvgBarChart = (
+    items: typeof timeline,
+    valueKey: 'requests' | 'tokens',
+    maxVal: number,
+    barFill: string
+  ) => {
+    const count = Math.max(items.length, 1);
+    const svgWidth = 560;
+    const svgHeight = 190;
+    const chartTop = 22;
+    const chartBottom = 158;
+    const maxBarHeight = chartBottom - chartTop;
+    const slotWidth = svgWidth / count;
+    const barWidth = Math.min(36, Math.max(6, slotWidth * 0.58));
+    const labelStep = count > 10 ? 5 : 1;
+
+    return (
+      <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full h-52 select-none">
+        <line x1={0} y1={chartBottom} x2={svgWidth} y2={chartBottom} stroke="#ebe5dc" strokeWidth={1.5} />
+        {items.map((item, idx) => {
+          const val = item[valueKey];
+          const barHeight = val > 0 ? Math.max(8, Math.round((val / maxVal) * maxBarHeight)) : 2;
+          const x = idx * slotWidth + (slotWidth - barWidth) / 2;
+          const y = chartBottom - barHeight;
+          const centerX = idx * slotWidth + slotWidth / 2;
+          const showDateLabel = idx % labelStep === 0 || idx === count - 1;
+
+          return (
+            <g key={item.date}>
+              <rect
+                x={x}
+                y={y}
+                width={barWidth}
+                height={barHeight}
+                rx={4}
+                fill={val > 0 ? barFill : '#e7e2d8'}
+              />
+              {val > 0 && count <= 10 && (
+                <text
+                  x={centerX}
+                  y={Math.max(14, y - 5)}
+                  textAnchor="middle"
+                  fill="#57534e"
+                  fontSize="10"
+                  fontFamily="JetBrains Mono, monospace"
+                >
+                  {val}
+                </text>
+              )}
+              {showDateLabel && (
+                <text
+                  x={centerX}
+                  y={178}
+                  textAnchor="middle"
+                  fill="#78716c"
+                  fontSize="10"
+                  fontFamily="JetBrains Mono, monospace"
+                >
+                  {item.date.slice(5)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    );
   };
 
   return (
@@ -44,7 +146,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics }) => {
             Usage & Cost Analytics
           </h2>
           <p className="text-xs text-stone-600 mt-1">
-            Aggregated token throughput, request volume, and model expenditure telemetry.
+            Real-time aggregated token throughput, request volume, and model expenditure telemetry.
           </p>
         </div>
 
@@ -78,7 +180,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics }) => {
 
           <button
             onClick={handleExportCsv}
-            className="px-3.5 py-1.5 bg-white hover:bg-[#faf8f5] text-stone-800 border border-[#e4ded5] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+            disabled={timeline.length === 0}
+            className="px-3.5 py-1.5 bg-white hover:bg-[#faf8f5] text-stone-800 border border-[#e4ded5] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export CSV</span>
@@ -90,101 +193,55 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics }) => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-[#e8e2d8] rounded-2xl p-5 shadow-xs">
           <span className="text-stone-500 text-xs block mb-1 font-medium">Total Throughput</span>
-          <div className="text-2xl font-bold text-stone-900">{(analytics?.totalRequests || 6).toLocaleString()}</div>
+          <div className="text-2xl font-bold text-stone-900">{totalRequests.toLocaleString()}</div>
           <span className="text-[11px] text-stone-500 mt-1 block">
-            {analytics?.successfulRequests || 6} successful
+            {successfulRequests.toLocaleString()} successful
           </span>
         </div>
 
         <div className="bg-white border border-[#e8e2d8] rounded-2xl p-5 shadow-xs">
           <span className="text-stone-500 text-xs block mb-1 font-medium">Token Volume</span>
-          <div className="text-2xl font-bold text-stone-900">
-            {((analytics?.totalInputTokens || 7350) + (analytics?.totalOutputTokens || 3997)).toLocaleString()}
-          </div>
+          <div className="text-2xl font-bold text-stone-900">{totalTokens.toLocaleString()}</div>
           <span className="text-[11px] text-stone-500 mt-1 block">
-            {(analytics?.totalInputTokens || 7350).toLocaleString()} in / {(analytics?.totalOutputTokens || 3997).toLocaleString()} out
+            {totalInputTokens.toLocaleString()} in / {totalOutputTokens.toLocaleString()} out
           </span>
         </div>
 
         <div className="bg-white border border-[#e8e2d8] rounded-2xl p-5 shadow-xs">
           <span className="text-stone-500 text-xs block mb-1 font-medium">Estimated Spend</span>
-          <div className="text-2xl font-bold text-[#a16207]">
-            ${(analytics?.totalEstimatedCostUsd || 0.0305).toFixed(4)}
-          </div>
-          <span className="text-[11px] text-stone-500 mt-1 block">Auto token pricing</span>
+          <div className="text-2xl font-bold text-[#a16207]">${totalEstimatedCostUsd.toFixed(4)}</div>
+          <span className="text-[11px] text-stone-500 mt-1 block">Calculated from model pricing</span>
         </div>
 
         <div className="bg-white border border-[#e8e2d8] rounded-2xl p-5 shadow-xs">
           <span className="text-stone-500 text-xs block mb-1 font-medium">Average Latency</span>
-          <div className="text-2xl font-bold text-[#0284c7]">
-            {analytics?.averageLatencyMs || 442} ms
-          </div>
-          <span className="text-[11px] text-stone-500 mt-1 block">Stream TTFT</span>
+          <div className="text-2xl font-bold text-[#0284c7]">{averageLatencyMs} ms</div>
+          <span className="text-[11px] text-stone-500 mt-1 block">Measured gateway RTT</span>
         </div>
       </div>
 
       {/* Primary Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: Requests Over Time */}
         <div className="bg-white border border-[#e8e2d8] rounded-3xl p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-sm text-stone-900 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-[#16a34a]" />
               Daily Request Volume
             </h3>
             <span className="text-xs text-stone-500 font-mono">Requests / Day</span>
           </div>
-
-          <div className="h-52 flex items-end justify-between gap-3 pt-6 pb-2 px-2 border-b border-[#f0eae1]">
-            {timeline.map((item, idx) => {
-              const heightPct = Math.max(16, Math.round((item.requests / maxReq) * 100));
-              return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                  <span className="text-[10px] font-mono text-stone-500 opacity-0 group-hover:opacity-100 transition">
-                    {item.requests}
-                  </span>
-                  <div
-                    style={{ height: `${heightPct}%` }}
-                    className="w-full bg-[#b9dbc3] group-hover:bg-[#a8cfb3] rounded-t-lg transition-all"
-                  />
-                  <span className="text-[10px] font-mono text-stone-500 mt-1">
-                    {item.date.slice(5)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+          {renderSvgBarChart(timeline, 'requests', maxReq, '#b9dbc3')}
         </div>
 
-        {/* Chart 2: Token Consumption */}
         <div className="bg-white border border-[#e8e2d8] rounded-3xl p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="font-bold text-sm text-stone-900 flex items-center gap-2">
               <Activity className="w-4 h-4 text-[#7c3aed]" />
               Daily Token Volume
             </h3>
             <span className="text-xs text-stone-500 font-mono">Tokens (In + Out)</span>
           </div>
-
-          <div className="h-52 flex items-end justify-between gap-3 pt-6 pb-2 px-2 border-b border-[#f0eae1]">
-            {timeline.map((item, idx) => {
-              const heightPct = Math.max(16, Math.round((item.tokens / maxTokens) * 100));
-              return (
-                <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                  <span className="text-[10px] font-mono text-stone-500 opacity-0 group-hover:opacity-100 transition">
-                    {item.tokens}
-                  </span>
-                  <div
-                    style={{ height: `${heightPct}%` }}
-                    className="w-full bg-[#ddd6fe] group-hover:bg-[#c4b5fd] rounded-t-lg transition-all"
-                  />
-                  <span className="text-[10px] font-mono text-stone-500 mt-1">
-                    {item.date.slice(5)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+          {renderSvgBarChart(timeline, 'tokens', maxTokens, '#ddd6fe')}
         </div>
       </div>
     </div>

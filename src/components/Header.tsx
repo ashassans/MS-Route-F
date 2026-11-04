@@ -8,11 +8,11 @@ import {
   Check,
   X,
   AlertTriangle,
-  UserCheck,
 } from 'lucide-react';
-import { GatewaySettings } from '../types/gateway.ts';
-import { auth, loginWithGoogle, logoutUser, testConnection } from '../lib/firebase.ts';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import type { User } from 'firebase/auth';
+import type { GatewaySettings } from '../types/gateway.ts';
+import { loginWithGoogle, logoutUser } from '../lib/firebase.ts';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface HeaderProps {
   currentView: string;
@@ -20,6 +20,7 @@ interface HeaderProps {
   onToggleKillSwitch: (enable: boolean) => void;
   activeProviderCount: number;
   activeKeyCount: number;
+  currentUser: User | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,27 +29,18 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleKillSwitch,
   activeProviderCount,
   activeKeyCount,
+  currentUser,
 }) => {
   const isKillSwitchActive = settings?.emergencyKillSwitch;
-  const [currentUser, setCurrentUser] = React.useState<User | { displayName?: string; email?: string; photoURL?: string } | null>(null);
-  const [firebaseConnected, setFirebaseConnected] = React.useState<boolean | null>(null);
   const [isSigningIn, setIsSigningIn] = React.useState(false);
+  const [authError, setAuthError] = React.useState<string | null>(null);
   const [showDomainModal, setShowDomainModal] = React.useState(false);
   const [domainToAuthorize, setDomainToAuthorize] = React.useState('');
   const [copiedDomain, setCopiedDomain] = React.useState(false);
 
-  React.useEffect(() => {
-    testConnection().then((connected) => setFirebaseConnected(connected));
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setCurrentUser(user);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
   const handleSignIn = async () => {
     setIsSigningIn(true);
+    setAuthError(null);
     try {
       const res = await loginWithGoogle();
       if (!res.success) {
@@ -56,6 +48,8 @@ export const Header: React.FC<HeaderProps> = ({
           const domain = res.unauthorizedDomain || (typeof window !== 'undefined' ? window.location.hostname : '');
           setDomainToAuthorize(domain);
           setShowDomainModal(true);
+        } else if (res.code !== 'auth/popup-closed-by-user') {
+          setAuthError(res.error || 'Authentication failed');
         }
       }
     } catch (err: any) {
@@ -63,6 +57,8 @@ export const Header: React.FC<HeaderProps> = ({
         const domain = typeof window !== 'undefined' ? window.location.hostname : '';
         setDomainToAuthorize(domain);
         setShowDomainModal(true);
+      } else if (err?.code !== 'auth/popup-closed-by-user') {
+        setAuthError(err?.message || 'Sign-in failed');
       }
     } finally {
       setIsSigningIn(false);
@@ -75,14 +71,6 @@ export const Header: React.FC<HeaderProps> = ({
       setCopiedDomain(true);
       setTimeout(() => setCopiedDomain(false), 2500);
     }
-  };
-
-  const handleSetLocalAdmin = () => {
-    setCurrentUser({
-      displayName: 'Gateway Admin',
-      email: settings?.ownerEmail || 'digonto9191@gmail.com',
-    });
-    setShowDomainModal(false);
   };
 
   const viewTitles: Record<string, { title: string; subtitle: string }> = {
@@ -100,7 +88,10 @@ export const Header: React.FC<HeaderProps> = ({
     settings: { title: 'Gateway Settings', subtitle: 'Spending Limits, Timeouts & Configuration Backups' },
   };
 
-  const headerInfo = viewTitles[currentView] || { title: 'System Overview', subtitle: 'Centralized Personal AI Gateway & Infrastructure Telemetry' };
+  const headerInfo = viewTitles[currentView] || {
+    title: 'System Overview',
+    subtitle: 'Centralized Personal AI Gateway & Infrastructure Telemetry',
+  };
 
   return (
     <header className="border-b border-[#e9e4db] bg-[#faf8f5]/90 backdrop-blur sticky top-0 z-30 px-8 py-5">
@@ -115,6 +106,15 @@ export const Header: React.FC<HeaderProps> = ({
             className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
           >
             Resume All Traffic
+          </button>
+        </div>
+      )}
+
+      {authError && (
+        <div className="mb-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-amber-900 text-xs">
+          <span>{authError}</span>
+          <button onClick={() => setAuthError(null)} className="font-semibold underline ml-3 cursor-pointer">
+            Dismiss
           </button>
         </div>
       )}
@@ -134,7 +134,6 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center flex-wrap gap-2.5">
-          {/* Quick Metrics Pills */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 bg-[#edf5fd] text-[#1e4e8c] border border-[#d2e4f7] rounded-xl px-3 py-1.5 text-xs font-medium">
               <Layers className="w-3.5 h-3.5 text-[#2b6cb0]" />
@@ -146,17 +145,18 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Firebase Connection & Auth Status */}
           {currentUser ? (
             <div className="flex items-center gap-2 bg-white border border-[#e5e0d8] shadow-sm rounded-xl px-3 py-1 text-xs">
               {currentUser.photoURL ? (
                 <img src={currentUser.photoURL} alt={currentUser.displayName || 'User'} className="w-5 h-5 rounded-full" />
               ) : (
                 <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center justify-center font-bold text-[10px]">
-                  {currentUser.email?.charAt(0).toUpperCase() || 'U'}
+                  {(currentUser.email || currentUser.displayName || 'U').charAt(0).toUpperCase()}
                 </div>
               )}
-              <span className="text-stone-700 font-medium max-w-[120px] truncate">{currentUser.displayName || currentUser.email}</span>
+              <span className="text-stone-700 font-medium max-w-[140px] truncate">
+                {currentUser.displayName || currentUser.email}
+              </span>
               <button
                 onClick={() => logoutUser()}
                 className="text-stone-400 hover:text-stone-700 text-[10px] underline ml-1 cursor-pointer"
@@ -170,14 +170,13 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={handleSignIn}
               disabled={isSigningIn}
               className="px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer bg-[#fff8ea] text-[#9a6111] border border-[#fde4ad] hover:bg-[#ffeed0] shadow-sm disabled:opacity-50"
-              title="Connect with Google via Firebase Auth"
+              title="Sign in with Google via Firebase Auth"
             >
               <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span>{isSigningIn ? 'Signing in...' : 'Sign in (ashassansite)'}</span>
+              <span>{isSigningIn ? 'Signing in...' : 'Sign in with Google'}</span>
             </button>
           )}
 
-          {/* Kill Switch Quick Button */}
           <button
             onClick={() => onToggleKillSwitch(!isKillSwitchActive)}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border shadow-sm ${
@@ -193,7 +192,6 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Firebase Authorized Domain Modal */}
       {showDomainModal && (
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-[#e5e0d8] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
@@ -204,7 +202,9 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-stone-900">Firebase Authorized Domain Needed</h3>
-                  <p className="text-xs text-stone-500">Project: <span className="text-amber-700 font-mono font-medium">ashassansite</span></p>
+                  <p className="text-xs text-stone-500">
+                    Project: <span className="text-amber-700 font-mono font-medium">{firebaseConfig.projectId}</span>
+                  </p>
                 </div>
               </div>
               <button
@@ -216,7 +216,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 leading-relaxed">
-              Google Sign-in requires adding this app's domain to your Firebase Console authorized domains list.
+              Google Sign-in requires adding this app&apos;s domain to your Firebase Console authorized domains list.
             </div>
 
             <div className="space-y-2">
@@ -251,7 +251,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
               <a
-                href="https://console.firebase.google.com/project/ashassansite/authentication/settings"
+                href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
                 target="_blank"
                 rel="noreferrer"
                 className="w-full sm:w-auto flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition"
@@ -261,12 +261,10 @@ export const Header: React.FC<HeaderProps> = ({
               </a>
 
               <button
-                onClick={handleSetLocalAdmin}
-                className="w-full sm:w-auto px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                title="Continue using MSRoute locally without waiting for domain authorization"
+                onClick={() => setShowDomainModal(false)}
+                className="w-full sm:w-auto px-4 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 rounded-xl text-xs font-semibold cursor-pointer"
               >
-                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Use Local Session</span>
+                Close
               </button>
             </div>
           </div>

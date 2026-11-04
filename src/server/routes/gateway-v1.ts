@@ -1,28 +1,54 @@
-import { Router, Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { db } from '../store/db.ts';
 import { parseAnthropicRequest, parseOpenAiRequest, formatAnthropicResponse, formatOpenAiResponse } from '../adapters/protocol-converter.ts';
 import { resolveRoute } from '../engine/router.ts';
-import { executeWithFallback } from '../engine/fallback.ts';
-import { executeProviderStream } from '../adapters/executor.ts';
-import { RequestLog } from '../../types/gateway.ts';
+import { executeWithFallback, openStreamWithFallback } from '../engine/fallback.ts';
+import type { RequestLog } from '../../types/gateway.ts';
 
 const router = Router();
 
-// Middleware: Authenticate Gateway API Key & Check Kill Switch
+function isPlaygroundHeader(req: Request): boolean {
+  return req.headers['x-msroute-client'] === 'playground' || req.headers['x-nexus-client'] === 'playground';
+}
+
+// Middleware: Authenticate Gateway API Key, Guardrails & Check Kill Switch
 function authenticateGateway(req: Request, res: Response, next: () => void) {
   const settings = db.getSettings();
 
-  // Check emergency kill switch first
   if (settings.emergencyKillSwitch) {
     return res.status(503).json({
       error: {
         type: 'service_unavailable_error',
-        message: 'NexusGate Emergency Kill Switch is ACTIVE. All outgoing AI provider requests are paused by the owner.',
+        message: 'MSRoute Emergency Kill Switch is ACTIVE. All outgoing AI provider requests are paused by the owner.',
       },
     });
   }
 
-  // Extract API key from Authorization header or x-api-key header
+  // Enforce monthly spending limit guardrail
+  if (
+    settings.globalMonthlySpendingLimitUsd > 0 &&
+    settings.currentMonthlySpentUsd >= settings.globalMonthlySpendingLimitUsd
+  ) {
+    return res.status(429).json({
+      error: {
+        type: 'rate_limit_error',
+        message: `Monthly spending limit ($${settings.globalMonthlySpendingLimitUsd}) reached.`,
+      },
+    });
+  }
+
+  // Enforce daily request limit guardrail
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayCount = db.getLogs(1000).filter((l) => l.timestamp.startsWith(todayStr)).length;
+  if (settings.globalDailyRequestLimit > 0 && todayCount >= settings.globalDailyRequestLimit) {
+    return res.status(429).json({
+      error: {
+        type: 'rate_limit_error',
+        message: `Daily request limit (${settings.globalDailyRequestLimit}) reached.`,
+      },
+    });
+  }
+
   let rawKey = '';
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -31,14 +57,13 @@ function authenticateGateway(req: Request, res: Response, next: () => void) {
     rawKey = String(req.headers['x-api-key']).trim();
   }
 
-  // Also allow requests from internal playground without explicit key
-  const isPlayground = req.headers['x-nexus-client'] === 'playground';
+  const isPlayground = isPlaygroundHeader(req);
 
   if (!rawKey && !isPlayground) {
     return res.status(401).json({
       error: {
         type: 'authentication_error',
-        message: 'Invalid or missing API key. Please pass Authorization: Bearer <GATEWAY_API_KEY> or x-api-key: <GATEWAY_API_KEY>.',
+        message: 'Invalid or missing API key. Pass Authorization: Bearer <GATEWAY_API_KEY> or x-api-key: <GATEWAY_API_KEY>.',
       },
     });
   }
@@ -65,7 +90,7 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
   const startTime = Date.now();
   const clientType = req.headers['user-agent']?.toLowerCase().includes('claude')
     ? 'claude-code'
-    : req.headers['x-nexus-client'] === 'playground'
+    : isPlaygroundHeader(req)
       ? 'playground'
       : 'other';
 
@@ -73,15 +98,16 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
     const parsed = parseAnthropicRequest(req.body);
     const route = resolveRoute(parsed.model, parsed);
 
-    // If client requested streaming
     if (parsed.stream) {
+      // Open stream with pre-stream failover BEFORE committing HTTP 200 SSE headers
+      const streamConn = await openStreamWithFallback(route, parsed);
+
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no');
 
       const msgId = `msg_${Date.now()}`;
-      // 1. message_start
       res.write(
         `event: message_start\ndata: ${JSON.stringify({
           type: 'message_start',
@@ -89,16 +115,15 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
             id: msgId,
             type: 'message',
             role: 'assistant',
-            model: route.selectedModel.id,
+            model: streamConn.selectedModel.id,
             content: [],
             stop_reason: null,
             stop_sequence: null,
-            usage: { input_tokens: 350, output_tokens: 0 },
+            usage: { input_tokens: 0, output_tokens: 0 },
           },
         })}\n\n`
       );
 
-      // 2. content_block_start
       res.write(
         `event: content_block_start\ndata: ${JSON.stringify({
           type: 'content_block_start',
@@ -107,41 +132,47 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
         })}\n\n`
       );
 
+      let totalInputTokens = 0;
       let totalOutputTokens = 0;
       let stopReason = 'end_turn';
 
+      const handleChunk = (chunk: typeof streamConn.firstChunk) => {
+        if (chunk.type === 'delta' && chunk.deltaText) {
+          totalOutputTokens += Math.max(1, Math.floor(chunk.deltaText.length / 4));
+          res.write(
+            `event: content_block_delta\ndata: ${JSON.stringify({
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: chunk.deltaText },
+            })}\n\n`
+          );
+        } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+          stopReason = 'tool_use';
+          res.write(
+            `event: content_block_start\ndata: ${JSON.stringify({
+              type: 'content_block_start',
+              index: 1,
+              content_block: {
+                type: 'tool_use',
+                id: chunk.toolCall.id,
+                name: chunk.toolCall.name || 'tool',
+                input: {},
+              },
+            })}\n\n`
+          );
+        } else if (chunk.type === 'done') {
+          if (chunk.inputTokens) totalInputTokens = chunk.inputTokens;
+          if (chunk.outputTokens) totalOutputTokens = chunk.outputTokens;
+          stopReason = chunk.finishReason || stopReason;
+        }
+      };
+
       try {
-        const stream = executeProviderStream(route.selectedProvider, route.selectedModel, parsed);
-        for await (const chunk of stream) {
-          if (chunk.type === 'delta' && chunk.deltaText) {
-            totalOutputTokens += Math.max(1, Math.floor(chunk.deltaText.length / 4));
-            res.write(
-              `event: content_block_delta\ndata: ${JSON.stringify({
-                type: 'content_block_delta',
-                index: 0,
-                delta: { type: 'text_delta', text: chunk.deltaText },
-              })}\n\n`
-            );
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            stopReason = 'tool_use';
-            res.write(
-              `event: content_block_start\ndata: ${JSON.stringify({
-                type: 'content_block_start',
-                index: 1,
-                content_block: {
-                  type: 'tool_use',
-                  id: chunk.toolCall.id,
-                  name: chunk.toolCall.name || 'tool',
-                  input: {},
-                },
-              })}\n\n`
-            );
-          } else if (chunk.type === 'done') {
-            stopReason = chunk.finishReason || stopReason;
-          }
+        handleChunk(streamConn.firstChunk);
+        for await (const chunk of streamConn.iterator) {
+          handleChunk(chunk);
         }
       } catch (streamErr: any) {
-        console.error('Streaming error during generation:', streamErr);
         res.write(
           `event: error\ndata: ${JSON.stringify({
             type: 'error',
@@ -150,7 +181,6 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
         );
       }
 
-      // 3. content_block_stop
       res.write(
         `event: content_block_stop\ndata: ${JSON.stringify({
           type: 'content_block_stop',
@@ -158,20 +188,17 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
         })}\n\n`
       );
 
-      // 4. message_delta
       res.write(
         `event: message_delta\ndata: ${JSON.stringify({
           type: 'message_delta',
           delta: { stop_reason: stopReason, stop_sequence: null },
-          usage: { output_tokens: totalOutputTokens || 60 },
+          usage: { output_tokens: totalOutputTokens },
         })}\n\n`
       );
 
-      // 5. message_stop
       res.write(`event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`);
       res.end();
 
-      // Record request log
       const latencyMs = Date.now() - startTime;
       const log: RequestLog = {
         id: `req_${Date.now()}`,
@@ -179,35 +206,41 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
         clientType,
         endpoint: '/v1/messages',
         requestedModel: parsed.model,
-        resolvedModel: route.selectedModel.displayName,
-        selectedProvider: route.selectedProvider.name,
+        resolvedModel: streamConn.selectedModel.displayName,
+        selectedProvider: streamConn.selectedProvider.name,
         routingStrategy: route.strategy,
-        status: 'success',
+        status: streamConn.wasFallback ? 'fallback_success' : 'success',
         statusCode: 200,
         latencyMs,
-        inputTokens: 350,
-        outputTokens: totalOutputTokens || 60,
-        estimatedCostUsd: Number((((350 / 1e6) * (route.selectedModel.pricing.inputPer1MTokens || 0.15)) +
-          (((totalOutputTokens || 60) / 1e6) * (route.selectedModel.pricing.outputPer1MTokens || 0.60))).toFixed(5)),
-        retryCount: 0,
-        fallbackHistory: [],
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        estimatedCostUsd: Number(
+          (
+            (totalInputTokens / 1e6) * (streamConn.selectedModel.pricing.inputPer1MTokens || 0.15) +
+            (totalOutputTokens / 1e6) * (streamConn.selectedModel.pricing.outputPer1MTokens || 0.6)
+          ).toFixed(5)
+        ),
+        retryCount: streamConn.fallbackHistory.length,
+        fallbackHistory: streamConn.fallbackHistory,
         streaming: true,
       };
       db.addLog(log);
       return;
     }
 
-    // Non-streaming execution with automatic failover
     const execRes = await executeWithFallback(route, parsed);
     const anthropicResponse = formatAnthropicResponse(execRes.response);
     const latencyMs = Date.now() - startTime;
 
     const inputTokens = execRes.response.usage.inputTokens;
     const outputTokens = execRes.response.usage.outputTokens;
-    const costUsd = Number((((inputTokens / 1e6) * (execRes.selectedModel.pricing.inputPer1MTokens || 0.15)) +
-      ((outputTokens / 1e6) * (execRes.selectedModel.pricing.outputPer1MTokens || 0.60))).toFixed(5));
+    const costUsd = Number(
+      (
+        (inputTokens / 1e6) * (execRes.selectedModel.pricing.inputPer1MTokens || 0.15) +
+        (outputTokens / 1e6) * (execRes.selectedModel.pricing.outputPer1MTokens || 0.6)
+      ).toFixed(5)
+    );
 
-    // Record Log
     const log: RequestLog = {
       id: `req_${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -231,8 +264,8 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
 
     return res.json(anthropicResponse);
   } catch (err: any) {
-    console.error('Messages API error:', err);
     const latencyMs = Date.now() - startTime;
+    const statusCode = (err?.message || '').includes('No active AI providers') || (err?.message || '').includes('Missing API key') ? 400 : 502;
     const log: RequestLog = {
       id: `req_${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -243,7 +276,7 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
       selectedProvider: 'None',
       routingStrategy: 'error',
       status: 'error',
-      statusCode: 500,
+      statusCode,
       latencyMs,
       inputTokens: 0,
       outputTokens: 0,
@@ -255,7 +288,7 @@ router.post('/messages', authenticateGateway, async (req: Request, res: Response
     };
     db.addLog(log);
 
-    return res.status(500).json({
+    return res.status(statusCode).json({
       type: 'error',
       error: {
         type: 'api_error',
@@ -283,56 +316,65 @@ router.post('/messages/count_tokens', authenticateGateway, (req: Request, res: R
  */
 router.post('/chat/completions', authenticateGateway, async (req: Request, res: Response) => {
   const startTime = Date.now();
-  const clientType = req.headers['x-nexus-client'] === 'playground' ? 'playground' : 'openai-sdk';
+  const clientType = isPlaygroundHeader(req) ? 'playground' : 'openai-sdk';
 
   try {
     const parsed = parseOpenAiRequest(req.body);
     const route = resolveRoute(parsed.model, parsed);
 
     if (parsed.stream) {
+      const streamConn = await openStreamWithFallback(route, parsed);
+
       res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no');
 
       const chunkId = `chatcmpl-${Date.now()}`;
+      let totalInputTokens = 0;
       let totalOutputTokens = 0;
 
+      const handleChunk = (chunk: typeof streamConn.firstChunk) => {
+        if (chunk.type === 'delta' && chunk.deltaText) {
+          totalOutputTokens += Math.max(1, Math.floor(chunk.deltaText.length / 4));
+          const openAiChunk = {
+            id: chunkId,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: streamConn.selectedModel.id,
+            choices: [
+              {
+                index: 0,
+                delta: { content: chunk.deltaText },
+                finish_reason: null,
+              },
+            ],
+          };
+          res.write(`data: ${JSON.stringify(openAiChunk)}\n\n`);
+        } else if (chunk.type === 'done') {
+          if (chunk.inputTokens) totalInputTokens = chunk.inputTokens;
+          if (chunk.outputTokens) totalOutputTokens = chunk.outputTokens;
+          const finalChunk = {
+            id: chunkId,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: streamConn.selectedModel.id,
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: chunk.finishReason || 'stop',
+              },
+            ],
+          };
+          res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+        }
+      };
+
       try {
-        const stream = executeProviderStream(route.selectedProvider, route.selectedModel, parsed);
-        for await (const chunk of stream) {
-          if (chunk.type === 'delta' && chunk.deltaText) {
-            totalOutputTokens += Math.max(1, Math.floor(chunk.deltaText.length / 4));
-            const openAiChunk = {
-              id: chunkId,
-              object: 'chat.completion.chunk',
-              created: Math.floor(Date.now() / 1000),
-              model: route.selectedModel.id,
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: chunk.deltaText },
-                  finish_reason: null,
-                },
-              ],
-            };
-            res.write(`data: ${JSON.stringify(openAiChunk)}\n\n`);
-          } else if (chunk.type === 'done') {
-            const finalChunk = {
-              id: chunkId,
-              object: 'chat.completion.chunk',
-              created: Math.floor(Date.now() / 1000),
-              model: route.selectedModel.id,
-              choices: [
-                {
-                  index: 0,
-                  delta: {},
-                  finish_reason: chunk.finishReason || 'stop',
-                },
-              ],
-            };
-            res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
-          }
+        handleChunk(streamConn.firstChunk);
+        for await (const chunk of streamConn.iterator) {
+          handleChunk(chunk);
         }
       } catch (streamErr: any) {
         console.error('OpenAI stream chunk error:', streamErr);
@@ -348,33 +390,40 @@ router.post('/chat/completions', authenticateGateway, async (req: Request, res: 
         clientType,
         endpoint: '/v1/chat/completions',
         requestedModel: parsed.model,
-        resolvedModel: route.selectedModel.displayName,
-        selectedProvider: route.selectedProvider.name,
+        resolvedModel: streamConn.selectedModel.displayName,
+        selectedProvider: streamConn.selectedProvider.name,
         routingStrategy: route.strategy,
-        status: 'success',
+        status: streamConn.wasFallback ? 'fallback_success' : 'success',
         statusCode: 200,
         latencyMs,
-        inputTokens: 250,
-        outputTokens: totalOutputTokens || 50,
-        estimatedCostUsd: Number((((250 / 1e6) * (route.selectedModel.pricing.inputPer1MTokens || 0.15)) +
-          (((totalOutputTokens || 50) / 1e6) * (route.selectedModel.pricing.outputPer1MTokens || 0.60))).toFixed(5)),
-        retryCount: 0,
-        fallbackHistory: [],
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        estimatedCostUsd: Number(
+          (
+            (totalInputTokens / 1e6) * (streamConn.selectedModel.pricing.inputPer1MTokens || 0.15) +
+            (totalOutputTokens / 1e6) * (streamConn.selectedModel.pricing.outputPer1MTokens || 0.6)
+          ).toFixed(5)
+        ),
+        retryCount: streamConn.fallbackHistory.length,
+        fallbackHistory: streamConn.fallbackHistory,
         streaming: true,
       };
       db.addLog(log);
       return;
     }
 
-    // Non-streaming execution
     const execRes = await executeWithFallback(route, parsed);
     const openAiResponse = formatOpenAiResponse(execRes.response);
     const latencyMs = Date.now() - startTime;
 
     const inputTokens = execRes.response.usage.inputTokens;
     const outputTokens = execRes.response.usage.outputTokens;
-    const costUsd = Number((((inputTokens / 1e6) * (execRes.selectedModel.pricing.inputPer1MTokens || 0.15)) +
-      ((outputTokens / 1e6) * (execRes.selectedModel.pricing.outputPer1MTokens || 0.60))).toFixed(5));
+    const costUsd = Number(
+      (
+        (inputTokens / 1e6) * (execRes.selectedModel.pricing.inputPer1MTokens || 0.15) +
+        (outputTokens / 1e6) * (execRes.selectedModel.pricing.outputPer1MTokens || 0.6)
+      ).toFixed(5)
+    );
 
     const log: RequestLog = {
       id: `req_${Date.now()}`,
@@ -399,12 +448,34 @@ router.post('/chat/completions', authenticateGateway, async (req: Request, res: 
 
     return res.json(openAiResponse);
   } catch (err: any) {
-    console.error('Chat completions error:', err);
-    return res.status(500).json({
+    const latencyMs = Date.now() - startTime;
+    const statusCode = (err?.message || '').includes('No active AI providers') || (err?.message || '').includes('Missing API key') ? 400 : 502;
+    db.addLog({
+      id: `req_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      clientType,
+      endpoint: '/v1/chat/completions',
+      requestedModel: req.body?.model || 'unknown',
+      resolvedModel: 'Error',
+      selectedProvider: 'None',
+      routingStrategy: 'error',
+      status: 'error',
+      statusCode,
+      latencyMs,
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+      retryCount: 0,
+      fallbackHistory: [],
+      errorMessage: err.message,
+      streaming: Boolean(req.body?.stream),
+    });
+
+    return res.status(statusCode).json({
       error: {
         message: err.message || 'Internal Gateway Error',
         type: 'api_error',
-        code: 500,
+        code: statusCode,
       },
     });
   }
@@ -429,7 +500,7 @@ router.get('/models', authenticateGateway, (_req: Request, res: Response) => {
     ...models.map((m) => ({
       id: m.id,
       object: 'model',
-      created: 1700000000,
+      created: Math.floor(Date.now() / 1000),
       owned_by: m.providerId,
       permission: [],
       root: m.id,
@@ -441,8 +512,8 @@ router.get('/models', authenticateGateway, (_req: Request, res: Response) => {
     ...aliases.map((a) => ({
       id: a.alias,
       object: 'model_alias',
-      created: 1700000000,
-      owned_by: 'nexusgate',
+      created: Math.floor(Date.now() / 1000),
+      owned_by: 'msroute',
       permission: [],
       root: a.targetId,
       parent: null,

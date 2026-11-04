@@ -23,7 +23,7 @@ async function startServer() {
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, x-nexus-client');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, x-msroute-client, x-nexus-client');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
@@ -53,10 +53,10 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 NexusGate AI Gateway running on http://0.0.0.0:${PORT}`);
-    console.log(`📡 Anthropic Messages Endpoint: http://localhost:${PORT}/v1/messages`);
-    console.log(`🤖 OpenAI Chat Endpoint: http://localhost:${PORT}/v1/chat/completions`);
-    console.log(`📊 Dashboard Management UI: http://localhost:${PORT}`);
+    console.log(`MSRoute AI Gateway running on http://0.0.0.0:${PORT}`);
+    console.log(`Anthropic Messages Endpoint: http://localhost:${PORT}/v1/messages`);
+    console.log(`OpenAI Chat Endpoint: http://localhost:${PORT}/v1/chat/completions`);
+    console.log(`Dashboard Management UI: http://localhost:${PORT}`);
   });
 }
 

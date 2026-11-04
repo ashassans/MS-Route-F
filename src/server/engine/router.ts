@@ -1,6 +1,6 @@
 import { db } from '../store/db.ts';
-import { ProviderConfig, ModelConfig, ComboConfig, RoutingMode } from '../../types/gateway.ts';
-import { UnifiedChatRequest } from '../adapters/types.ts';
+import type { ProviderConfig, ModelConfig, ComboConfig, RoutingMode } from '../../types/gateway.ts';
+import type { UnifiedChatRequest } from '../adapters/types.ts';
 
 export interface RouteResolution {
   strategy: string;
@@ -22,7 +22,7 @@ export function resolveRoute(
   const settings = db.getSettings();
   const effectiveMode = forcedMode || settings.defaultRoutingMode;
 
-  // 1. First, check if requested model matches a Model Alias
+  // 1. Check if requested model matches a Model Alias
   const alias = db.getAlias(requestedModelName);
   if (alias) {
     if (alias.targetType === 'combo') {
@@ -45,8 +45,10 @@ export function resolveRoute(
     }
   }
 
-  // 2. Check if requested model directly matches a Model ID
-  const directModel = db.getModel(requestedModelName);
+  // 2. Check if requested model directly matches a Model ID or API model name
+  const directModel =
+    db.getModel(requestedModelName) ||
+    db.getModels().find((m) => m.apiModelName === requestedModelName && m.enabled);
   if (directModel && directModel.enabled) {
     const prov = db.getProvider(directModel.providerId);
     if (prov && prov.enabled) {
@@ -77,9 +79,20 @@ export function resolveRoute(
     }
   }
 
-  // 6. Fallback to default configured model
-  const defaultModel = db.getModel(settings.defaultModelId) || db.getModels()[0];
-  const prov = db.getProvider(defaultModel.providerId) || db.getProviders()[0];
+  // 6. Fallback to default configured model or first enabled model
+  const enabledModels = db.getModels().filter((m) => m.enabled);
+  const enabledProviders = db.getProviders().filter((p) => p.enabled);
+
+  if (enabledModels.length === 0 || enabledProviders.length === 0) {
+    throw new Error('No active AI providers or models are configured. Add an AI provider and API key in the Providers tab.');
+  }
+
+  const defaultModel =
+    enabledModels.find((m) => m.id === settings.defaultModelId) ||
+    enabledModels.find((m) => enabledProviders.some((p) => p.id === m.providerId)) ||
+    enabledModels[0];
+
+  const prov = enabledProviders.find((p) => p.id === defaultModel.providerId) || enabledProviders[0];
 
   return {
     strategy: 'default-fallback',
@@ -95,7 +108,6 @@ export function resolveComboRoute(combo: ComboConfig, prefix = 'combo'): RouteRe
   const providers = db.getProviders();
   const models = db.getModels();
 
-  // Filter steps whose provider and model are enabled and not in 'disabled' / 'unavailable' state
   const availableSteps = combo.steps
     .map((step) => {
       const p = providers.find((pr) => pr.id === step.providerId);
@@ -107,9 +119,13 @@ export function resolveComboRoute(combo: ComboConfig, prefix = 'combo'): RouteRe
     });
 
   if (availableSteps.length === 0) {
-    // Fallback if combo has no available steps
-    const defaultModel = models[0];
-    const defaultProv = providers.find((p) => p.id === defaultModel.providerId) || providers[0];
+    const enabledModels = models.filter((m) => m.enabled);
+    const enabledProviders = providers.filter((p) => p.enabled);
+    if (enabledModels.length === 0 || enabledProviders.length === 0) {
+      throw new Error(`Combo "${combo.name}" has no active providers/models available.`);
+    }
+    const defaultModel = enabledModels[0];
+    const defaultProv = enabledProviders.find((p) => p.id === defaultModel.providerId) || enabledProviders[0];
     return {
       strategy: `${prefix}:${combo.name} (no-active-steps)`,
       selectedProvider: defaultProv,
@@ -117,7 +133,6 @@ export function resolveComboRoute(combo: ComboConfig, prefix = 'combo'): RouteRe
     };
   }
 
-  // A. Weighted Strategy
   if (combo.strategy === 'weighted') {
     const totalWeight = availableSteps.reduce((acc, s) => acc + (s.step.weight || 50), 0);
     const rand = Math.random() * totalWeight;
@@ -139,18 +154,16 @@ export function resolveComboRoute(combo: ComboConfig, prefix = 'combo'): RouteRe
       isCombo: true,
       comboConfig: combo,
       fallbackChain: availableSteps
-        .filter((s) => s.provider.id !== chosen.provider.id)
+        .filter((s) => !(s.provider.id === chosen.provider.id && s.model.id === chosen.model.id))
         .map((s) => ({ provider: s.provider, model: s.model })),
     };
   }
 
-  // B. Sequential Strategy
-  // Return step 0 as primary, and remaining steps as fallback chain
   const primary = availableSteps[0];
   const fallbacks = availableSteps.slice(1).map((s) => ({ provider: s.provider, model: s.model }));
 
   return {
-    strategy: `${prefix}:${combo.name} (sequential)`,
+    strategy: `${prefix}:${combo.name} (${combo.strategy})`,
     selectedProvider: primary.provider,
     selectedModel: primary.model,
     isCombo: true,
@@ -159,13 +172,14 @@ export function resolveComboRoute(combo: ComboConfig, prefix = 'combo'): RouteRe
   };
 }
 
-/**
- * Auto-routing logic based on request characteristics
- */
 function resolveAutoRoute(req: UnifiedChatRequest): RouteResolution {
   const rules = db.getRules();
-  const models = db.getModels();
-  const providers = db.getProviders();
+  const models = db.getModels().filter((m) => m.enabled);
+  const providers = db.getProviders().filter((p) => p.enabled);
+
+  if (models.length === 0 || providers.length === 0) {
+    throw new Error('No active AI providers or models are configured. Add an AI provider and API key in the Providers tab.');
+  }
 
   const promptText = req.messages
     .map((m) => (typeof m.content === 'string' ? m.content : ''))
@@ -177,7 +191,6 @@ function resolveAutoRoute(req: UnifiedChatRequest): RouteResolution {
     (m) => Array.isArray(m.content) && m.content.some((b: any) => b.type === 'image_url' || b.type === 'image')
   );
 
-  // Check rules in priority order
   for (const rule of rules) {
     if (rule.taskType === 'vision' && hasVision) {
       const match = getModelOrComboFromRule(rule, providers, models);
@@ -195,10 +208,17 @@ function resolveAutoRoute(req: UnifiedChatRequest): RouteResolution {
       const match = getModelOrComboFromRule(rule, providers, models);
       if (match) return match;
     }
+    if (rule.taskType === 'default') {
+      const match = getModelOrComboFromRule(rule, providers, models);
+      if (match) return match;
+    }
   }
 
-  // Default Auto selection
-  const defaultModel = models.find((m) => m.id === 'gemini-2.5-flash') || models[0];
+  const settings = db.getSettings();
+  const defaultModel =
+    models.find((m) => m.id === settings.defaultModelId) ||
+    models.find((m) => providers.some((p) => p.id === m.providerId)) ||
+    models[0];
   const defaultProv = providers.find((p) => p.id === defaultModel.providerId) || providers[0];
 
   return {

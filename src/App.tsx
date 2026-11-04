@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { onAuthStateChanged, type User } from 'firebase/auth';
+import { auth, testConnection } from './lib/firebase.ts';
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { OverviewView } from './components/views/OverviewView.tsx';
@@ -13,7 +15,7 @@ import { AnalyticsView } from './components/views/AnalyticsView.tsx';
 import { RequestLogsView } from './components/views/RequestLogsView.tsx';
 import { HealthView } from './components/views/HealthView.tsx';
 import { SettingsView } from './components/views/SettingsView.tsx';
-import {
+import type {
   ProviderConfig,
   ModelConfig,
   ModelAlias,
@@ -36,9 +38,10 @@ export default function App() {
   const [logs, setLogs] = useState<RequestLog[]>([]);
   const [analytics, setAnalytics] = useState<GatewayAnalytics | null>(null);
   const [settings, setSettings] = useState<GatewaySettings | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [bannerError, setBannerError] = useState<string | null>(null);
 
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
     try {
       const [
         provRes,
@@ -57,8 +60,8 @@ export default function App() {
         fetch('/api/combos'),
         fetch('/api/rules'),
         fetch('/api/keys'),
-        fetch('/api/logs?limit=50'),
-        fetch('/api/analytics'),
+        fetch('/api/logs?limit=100'),
+        fetch('/api/analytics?range=7d'),
         fetch('/api/settings'),
       ]);
 
@@ -71,16 +74,20 @@ export default function App() {
       if (logRes.ok) setLogs(await logRes.json());
       if (anaRes.ok) setAnalytics(await anaRes.json());
       if (setRes.ok) setSettings(await setRes.json());
+      setBannerError(null);
     } catch (err) {
       console.error('Error fetching gateway state:', err);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchAllData();
-  }, []);
+    testConnection();
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsub();
+  }, [fetchAllData]);
 
   const handleToggleKillSwitch = async (enabled: boolean) => {
     try {
@@ -94,24 +101,25 @@ export default function App() {
         setSettings({ ...settings, emergencyKillSwitch: data.emergencyKillSwitch });
       }
     } catch (err: any) {
-      alert(`Error updating kill switch: ${err.message}`);
+      setBannerError(`Failed to update kill switch: ${err.message}`);
     }
   };
 
   const activeProviderCount = providers.filter((p) => p.enabled).length;
   const activeKeyCount = apiKeys.filter((k) => !k.revoked).length;
-  const degradedProviderCount = providers.filter((p) => p.health.status !== 'healthy' && p.enabled).length;
+  const degradedProviderCount = providers.filter(
+    (p) => p.enabled && (p.health.status === 'degraded' || p.health.status === 'unavailable')
+  ).length;
 
   return (
     <div className="flex h-screen bg-[#faf8f5] text-stone-800 font-sans antialiased overflow-hidden selection:bg-[#c2e4cc] selection:text-[#143a24]">
-      {/* Sidebar Navigation */}
       <Sidebar
         currentView={currentView}
         onSelectView={setCurrentView}
         errorCount={degradedProviderCount}
+        currentUser={currentUser}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-[#faf8f5]">
         <Header
           currentView={currentView}
@@ -119,15 +127,29 @@ export default function App() {
           onToggleKillSwitch={handleToggleKillSwitch}
           activeProviderCount={activeProviderCount}
           activeKeyCount={activeKeyCount}
+          currentUser={currentUser}
         />
 
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
           <div className="max-w-7xl mx-auto">
+            {bannerError && (
+              <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between">
+                <span>{bannerError}</span>
+                <button
+                  onClick={() => setBannerError(null)}
+                  className="font-semibold underline ml-4 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             {currentView === 'overview' && (
               <OverviewView
                 providers={providers}
                 models={models}
                 combos={combos}
+                apiKeys={apiKeys}
                 logs={logs}
                 analytics={analytics}
                 settings={settings}
@@ -181,6 +203,9 @@ export default function App() {
             {currentView === 'claudecode' && (
               <ClaudeCodeView
                 apiKeys={apiKeys}
+                models={models}
+                combos={combos}
+                onNavigate={setCurrentView}
               />
             )}
 
@@ -189,6 +214,8 @@ export default function App() {
                 models={models}
                 aliases={aliases}
                 combos={combos}
+                onRefresh={fetchAllData}
+                onNavigate={setCurrentView}
               />
             )}
 
@@ -209,12 +236,14 @@ export default function App() {
               <HealthView
                 providers={providers}
                 onRefresh={fetchAllData}
+                onNavigate={setCurrentView}
               />
             )}
 
             {currentView === 'settings' && (
               <SettingsView
                 settings={settings}
+                currentUser={currentUser}
                 onRefresh={fetchAllData}
                 onToggleKillSwitch={handleToggleKillSwitch}
               />

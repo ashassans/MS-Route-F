@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { db } from '../store/db.ts';
 import { encryptSecret, generateGatewayApiKey, maskSecret } from '../security/encryption.ts';
 import { validateProviderUrl } from '../security/ssrf.ts';
@@ -6,8 +6,52 @@ import { runClaudeCodeTestSuite } from '../testing/claude-suite.ts';
 import { resolveRoute, resolveComboRoute } from '../engine/router.ts';
 import { executeWithFallback } from '../engine/fallback.ts';
 import { parseAnthropicRequest, parseOpenAiRequest } from '../adapters/protocol-converter.ts';
+import { pingProviderConnection, resolveProviderApiKey } from '../adapters/executor.ts';
+import type { ModelConfig, ProviderConfig, RequestLog } from '../../types/gateway.ts';
 
 const router = Router();
+
+function inferModelDefaults(modelId: string, providerId: string): ModelConfig {
+  const lower = modelId.toLowerCase();
+  const isVision = lower.includes('gemini') || lower.includes('4o') || lower.includes('sonnet') || lower.includes('opus') || lower.includes('vision');
+  const isReasoning = lower.includes('reason') || lower.includes('r1') || lower.includes('o1') || lower.includes('o3') || lower.includes('3-7') || lower.includes('2.5');
+  const contextWindow = lower.includes('gemini-2.5-pro')
+    ? 2097152
+    : lower.includes('gemini')
+      ? 1048576
+      : lower.includes('claude')
+        ? 200000
+        : 128000;
+
+  return {
+    id: modelId,
+    displayName: modelId,
+    providerId,
+    apiModelName: modelId,
+    contextWindow,
+    capabilities: {
+      streaming: true,
+      tools: !lower.includes('reasoner'),
+      vision: isVision,
+      reasoning: isReasoning,
+      jsonOutput: !lower.includes('reasoner'),
+    },
+    pricing: {
+      inputPer1MTokens: lower.includes('mini') || lower.includes('flash') || lower.includes('deepseek-chat') ? 0.15 : 2.5,
+      outputPer1MTokens: lower.includes('mini') || lower.includes('flash') || lower.includes('deepseek-chat') ? 0.6 : 10.0,
+    },
+    enabled: true,
+  };
+}
+
+function sanitizeProviderForClient(p: ProviderConfig) {
+  const effectiveRaw = resolveProviderApiKey(p);
+  return {
+    ...p,
+    apiKey: effectiveRaw ? maskSecret(effectiveRaw) : undefined,
+    hasApiKey: Boolean(effectiveRaw),
+  };
+}
 
 // 1. Overview & System Status
 router.get('/status', (_req: Request, res: Response) => {
@@ -16,10 +60,10 @@ router.get('/status', (_req: Request, res: Response) => {
   const models = db.getModels();
   const combos = db.getCombos();
   const activeKeys = db.getApiKeys().filter((k) => !k.revoked);
-  const analytics = db.getAnalytics();
+  const analytics = db.getAnalytics('30d');
 
   res.json({
-    appName: 'NexusGate AI Gateway',
+    appName: 'MSRoute AI Gateway',
     version: '1.0.0',
     status: settings.emergencyKillSwitch ? 'kill_switch_active' : 'online',
     uptimeSeconds: Math.floor(process.uptime()),
@@ -36,12 +80,9 @@ router.get('/status', (_req: Request, res: Response) => {
   });
 });
 
-// 2. Providers CRUD & Test Connection
+// 2. Providers CRUD & Real Test Connection
 router.get('/providers', (_req: Request, res: Response) => {
-  const providers = db.getProviders().map((p) => ({
-    ...p,
-    apiKey: p.apiKey ? maskSecret(p.apiKey) : undefined,
-  }));
+  const providers = db.getProviders().map(sanitizeProviderForClient);
   res.json(providers);
 });
 
@@ -51,31 +92,30 @@ router.post('/providers', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Name and Base URL are required' });
   }
 
-  // SSRF check on Base URL
   const ssrfCheck = validateProviderUrl(body.baseUrl);
   if (!ssrfCheck.valid) {
     return res.status(400).json({ error: ssrfCheck.reason });
   }
 
-  const newProvider = {
+  const modelList: string[] = Array.isArray(body.models) ? body.models.filter(Boolean) : [];
+  const rawApiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+
+  const newProvider: ProviderConfig = {
     id: body.id || `prov-${Date.now()}`,
-    name: body.name,
+    name: body.name.trim(),
     type: body.type || 'custom',
     baseUrl: ssrfCheck.sanitizedUrl || body.baseUrl,
-    apiKey: body.apiKey ? encryptSecret(body.apiKey) : undefined,
+    apiKey: rawApiKey ? encryptSecret(rawApiKey) : undefined,
     protocol: body.protocol || 'openai-chat',
     customHeaders: body.customHeaders || {},
-    models: body.models || [],
-    defaultModel: body.defaultModel || (body.models?.[0] ?? ''),
+    models: modelList,
+    defaultModel: body.defaultModel || (modelList[0] ?? ''),
     timeoutMs: Number(body.timeoutMs) || 30000,
-    priority: Number(body.priority) || 3,
-    maxRetries: Number(body.maxRetries) || 2,
+    priority: Number(body.priority) || 2,
+    maxRetries: Number(body.maxRetries ?? 2),
     enabled: body.enabled !== false,
     health: {
-      status: 'healthy' as const,
-      latencyMs: 120,
-      lastChecked: new Date().toISOString(),
-      lastSuccess: new Date().toISOString(),
+      status: 'unknown',
       recentErrorsCount: 0,
     },
     metadata: body.metadata || {},
@@ -84,7 +124,15 @@ router.post('/providers', (req: Request, res: Response) => {
   };
 
   db.saveProvider(newProvider);
-  res.json({ success: true, provider: { ...newProvider, apiKey: maskSecret(body.apiKey) } });
+
+  // Automatically register listed models into Model Registry if not already registered
+  for (const mId of modelList) {
+    if (!db.getModel(mId)) {
+      db.saveModel(inferModelDefaults(mId, newProvider.id));
+    }
+  }
+
+  res.json({ success: true, provider: sanitizeProviderForClient(newProvider) });
 });
 
 router.put('/providers/:id', (req: Request, res: Response) => {
@@ -94,7 +142,7 @@ router.put('/providers/:id', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Provider not found' });
   }
 
-  const body = req.body;
+  const body = { ...req.body };
   if (body.baseUrl) {
     const ssrfCheck = validateProviderUrl(body.baseUrl);
     if (!ssrfCheck.valid) {
@@ -103,20 +151,38 @@ router.put('/providers/:id', (req: Request, res: Response) => {
     body.baseUrl = ssrfCheck.sanitizedUrl || body.baseUrl;
   }
 
-  const updated = {
+  const rawNewKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+  const shouldUpdateKey = rawNewKey.length > 0 && !rawNewKey.includes('...') && !rawNewKey.includes('****');
+
+  const updated: ProviderConfig = {
     ...existing,
     ...body,
-    apiKey: body.apiKey && !body.apiKey.includes('...') ? encryptSecret(body.apiKey) : existing.apiKey,
+    apiKey: shouldUpdateKey ? encryptSecret(rawNewKey) : existing.apiKey,
     updatedAt: new Date().toISOString(),
   };
 
   db.saveProvider(updated);
-  res.json({ success: true, provider: { ...updated, apiKey: maskSecret(updated.apiKey) } });
+
+  if (Array.isArray(updated.models)) {
+    for (const mId of updated.models) {
+      if (mId && !db.getModel(mId)) {
+        db.saveModel(inferModelDefaults(mId, updated.id));
+      }
+    }
+  }
+
+  res.json({ success: true, provider: sanitizeProviderForClient(updated) });
 });
 
 router.delete('/providers/:id', (req: Request, res: Response) => {
   const { id } = req.params;
   const success = db.deleteProvider(id);
+  // Also remove orphaned models belonging solely to this deleted provider
+  for (const m of db.getModels()) {
+    if (m.providerId === id) {
+      db.deleteModel(m.id);
+    }
+  }
   res.json({ success });
 });
 
@@ -129,13 +195,13 @@ router.post('/providers/:id/test', async (req: Request, res: Response) => {
 
   const start = Date.now();
   try {
-    // Ping test or dummy query to verify provider
-    const latency = Math.floor(Math.random() * 80) + 95;
+    const ping = await pingProviderConnection(provider);
     provider.health = {
       status: 'healthy',
-      latencyMs: latency,
+      latencyMs: ping.latencyMs,
       lastChecked: new Date().toISOString(),
       lastSuccess: new Date().toISOString(),
+      errorMessage: undefined,
       recentErrorsCount: 0,
     };
     db.saveProvider(provider);
@@ -144,25 +210,28 @@ router.post('/providers/:id/test', async (req: Request, res: Response) => {
       success: true,
       providerId: id,
       providerName: provider.name,
-      latencyMs: latency,
+      latencyMs: ping.latencyMs,
       availableModels: provider.models,
       status: 'healthy',
       timestamp: new Date().toISOString(),
     });
   } catch (err: any) {
+    const latencyMs = Date.now() - start;
+    const isAuthMissing = (err?.message || '').includes('401');
     provider.health = {
-      status: 'degraded',
-      latencyMs: Date.now() - start,
+      status: isAuthMissing ? 'unavailable' : 'degraded',
+      latencyMs,
       lastChecked: new Date().toISOString(),
+      lastSuccess: provider.health.lastSuccess,
       errorMessage: err.message,
-      recentErrorsCount: provider.health.recentErrorsCount + 1,
+      recentErrorsCount: (provider.health.recentErrorsCount || 0) + 1,
     };
     db.saveProvider(provider);
 
-    res.status(500).json({
+    res.status(400).json({
       success: false,
       error: err.message,
-      latencyMs: Date.now() - start,
+      latencyMs,
     });
   }
 });
@@ -177,8 +246,27 @@ router.post('/models', (req: Request, res: Response) => {
   if (!body.id || !body.displayName || !body.providerId) {
     return res.status(400).json({ error: 'Model ID, display name, and provider ID are required' });
   }
-  db.saveModel(body);
-  res.json({ success: true, model: body });
+  const model: ModelConfig = {
+    id: body.id.trim(),
+    displayName: body.displayName.trim(),
+    providerId: body.providerId,
+    apiModelName: (body.apiModelName || body.id).trim(),
+    contextWindow: Number(body.contextWindow) || 128000,
+    capabilities: {
+      streaming: body.capabilities?.streaming !== false,
+      tools: Boolean(body.capabilities?.tools),
+      vision: Boolean(body.capabilities?.vision),
+      reasoning: Boolean(body.capabilities?.reasoning),
+      jsonOutput: body.capabilities?.jsonOutput !== false,
+    },
+    pricing: {
+      inputPer1MTokens: Number(body.pricing?.inputPer1MTokens ?? 0.5),
+      outputPer1MTokens: Number(body.pricing?.outputPer1MTokens ?? 1.5),
+    },
+    enabled: body.enabled !== false,
+  };
+  db.saveModel(model);
+  res.json({ success: true, model });
 });
 
 router.put('/models/:id', (req: Request, res: Response) => {
@@ -270,14 +358,15 @@ router.post('/combos/:id/test', async (req: Request, res: Response) => {
   const combo = db.getCombo(id);
   if (!combo) return res.status(404).json({ error: 'Combo not found' });
 
-  const route = resolveComboRoute(combo, 'test');
-  const dummyReq = parseAnthropicRequest({
-    model: combo.id,
-    messages: [{ role: 'user', content: 'Test combo execution route trace' }],
-  });
-
   const start = Date.now();
   try {
+    const route = resolveComboRoute(combo, 'test');
+    const dummyReq = parseAnthropicRequest({
+      model: combo.id,
+      max_tokens: 64,
+      messages: [{ role: 'user', content: 'Respond with OK' }],
+    });
+
     const execRes = await executeWithFallback(route, dummyReq);
     res.json({
       success: true,
@@ -290,7 +379,7 @@ router.post('/combos/:id/test', async (req: Request, res: Response) => {
       fallbackHistory: execRes.fallbackHistory,
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: err.message, latencyMs: Date.now() - start });
   }
 });
 
@@ -330,22 +419,21 @@ router.post('/keys', (req: Request, res: Response) => {
   const { rawKey, keyPrefix, keyHash } = generateGatewayApiKey();
   const keyObj = {
     id: `key-${Date.now()}`,
-    name: body.name,
+    name: body.name.trim(),
     keyPrefix,
     keyHash,
     permissions: body.permissions || ['all'],
-    rateLimitPerMinute: Number(body.rateLimitPerMinute) || 300,
+    rateLimitPerMinute: Number(body.rateLimitPerMinute) || 600,
     createdAt: new Date().toISOString(),
     revoked: false,
   };
 
   db.saveApiKey(keyObj);
-  // Return the rawKey ONCE to the creator
   res.json({
     success: true,
     key: {
       ...keyObj,
-      rawKey, // Only shown once at creation!
+      rawKey,
     },
   });
 });
@@ -367,8 +455,10 @@ router.delete('/logs', (_req: Request, res: Response) => {
 });
 
 // 9. Analytics
-router.get('/analytics', (_req: Request, res: Response) => {
-  res.json(db.getAnalytics());
+router.get('/analytics', (req: Request, res: Response) => {
+  const rangeParam = String(req.query.range || '7d');
+  const range = rangeParam === 'today' || rangeParam === '30d' ? rangeParam : '7d';
+  res.json(db.getAnalytics(range));
 });
 
 // 10. Settings & Emergency Kill Switch
@@ -405,31 +495,70 @@ router.post('/test/claude-suite', async (_req: Request, res: Response) => {
 
 // 12. Playground Execution
 router.post('/test/playground', async (req: Request, res: Response) => {
-  const { protocol, model, prompt, stream, system } = req.body;
+  const { protocol, model, prompt, stream, system, systemPrompt } = req.body;
+  const effectiveSystem = system ?? systemPrompt ?? '';
   const start = Date.now();
+  const endpoint = protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions';
+
+  if (db.getSettings().emergencyKillSwitch) {
+    return res.status(503).json({
+      success: false,
+      error: 'Emergency Kill Switch is active. Deactivate it to dispatch requests.',
+      latencyMs: 0,
+    });
+  }
 
   try {
-    let parsed: any;
-    if (protocol === 'anthropic') {
-      parsed = parseAnthropicRequest({
-        model,
-        messages: [{ role: 'user', content: prompt || 'Hello' }],
-        system,
-        stream: Boolean(stream),
-      });
-    } else {
-      parsed = parseOpenAiRequest({
-        model,
-        messages: [
-          ...(system ? [{ role: 'system', content: system }] : []),
-          { role: 'user', content: prompt || 'Hello' },
-        ],
-        stream: Boolean(stream),
-      });
-    }
+    const parsed =
+      protocol === 'anthropic'
+        ? parseAnthropicRequest({
+            model,
+            messages: [{ role: 'user', content: prompt || 'Hello' }],
+            system: effectiveSystem,
+            stream: Boolean(stream),
+          })
+        : parseOpenAiRequest({
+            model,
+            messages: [
+              ...(effectiveSystem ? [{ role: 'system', content: effectiveSystem }] : []),
+              { role: 'user', content: prompt || 'Hello' },
+            ],
+            stream: Boolean(stream),
+          });
 
     const route = resolveRoute(parsed.model, parsed);
     const execRes = await executeWithFallback(route, parsed);
+    const latencyMs = Date.now() - start;
+
+    const inputTokens = execRes.response.usage.inputTokens;
+    const outputTokens = execRes.response.usage.outputTokens;
+    const costUsd = Number(
+      (
+        (inputTokens / 1e6) * (execRes.selectedModel.pricing.inputPer1MTokens || 0.15) +
+        (outputTokens / 1e6) * (execRes.selectedModel.pricing.outputPer1MTokens || 0.6)
+      ).toFixed(5)
+    );
+
+    const log: RequestLog = {
+      id: `req_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      clientType: 'playground',
+      endpoint,
+      requestedModel: model || parsed.model,
+      resolvedModel: execRes.selectedModel.displayName,
+      selectedProvider: execRes.selectedProvider.name,
+      routingStrategy: route.strategy,
+      status: execRes.wasFallback ? 'fallback_success' : 'success',
+      statusCode: 200,
+      latencyMs,
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: costUsd,
+      retryCount: execRes.retryCount,
+      fallbackHistory: execRes.fallbackHistory,
+      streaming: false,
+    };
+    db.addLog(log);
 
     res.json({
       success: true,
@@ -438,22 +567,44 @@ router.post('/test/playground', async (req: Request, res: Response) => {
       resolvedModel: execRes.selectedModel.displayName,
       selectedProvider: execRes.selectedProvider.name,
       strategy: route.strategy,
-      latencyMs: Date.now() - start,
+      latencyMs,
       wasFallback: execRes.wasFallback,
       content: execRes.response.content,
+      output: execRes.response.content,
       toolCalls: execRes.response.toolCalls,
       usage: execRes.response.usage,
       stopReason: execRes.response.stopReason,
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message, latencyMs: Date.now() - start });
+    const latencyMs = Date.now() - start;
+    db.addLog({
+      id: `req_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      clientType: 'playground',
+      endpoint,
+      requestedModel: model || 'auto',
+      resolvedModel: 'Error',
+      selectedProvider: 'None',
+      routingStrategy: 'error',
+      status: 'error',
+      statusCode: 400,
+      latencyMs,
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+      retryCount: 0,
+      fallbackHistory: [],
+      errorMessage: err.message,
+      streaming: false,
+    });
+    res.status(400).json({ success: false, error: err.message, latencyMs });
   }
 });
 
-// 13. Export & Import Configuration
+// 13. Export, Import & Factory Reset Configuration
 router.get('/export-config', (_req: Request, res: Response) => {
   const jsonStr = db.exportConfig();
-  res.setHeader('Content-Disposition', 'attachment; filename="nexusgate-config.json"');
+  res.setHeader('Content-Disposition', 'attachment; filename="msroute-config.json"');
   res.setHeader('Content-Type', 'application/json');
   res.send(jsonStr);
 });
@@ -463,6 +614,11 @@ router.post('/import-config', (req: Request, res: Response) => {
   if (!configJson) return res.status(400).json({ error: 'Config JSON is required' });
   const success = db.importConfig(configJson);
   res.json({ success });
+});
+
+router.post('/reset-state', (_req: Request, res: Response) => {
+  db.resetState();
+  res.json({ success: true });
 });
 
 export default router;

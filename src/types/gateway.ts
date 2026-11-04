@@ -27,6 +27,7 @@ export interface ProviderConfig {
   type: ProviderType;
   baseUrl: string;
   apiKey?: string; // Encrypted or masked
+  hasApiKey?: boolean;
   protocol: ApiProtocol;
   customHeaders?: Record<string, string>;
   models: string[]; // List of model IDs provided
