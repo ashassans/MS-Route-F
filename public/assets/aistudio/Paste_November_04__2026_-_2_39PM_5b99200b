@@ -1,0 +1,1220 @@
+# MASTER BUILD PROMPT
+# Unified AI Gateway — Personal Cloud AI Infrastructure
+
+## 1. PROJECT OVERVIEW
+
+Build a production-ready, cloud-hosted Unified AI Gateway inspired by the architecture and capabilities of OmniRoute and similar LLM routing platforms.
+
+This is a personal AI infrastructure project. It will be used by one owner across multiple devices and AI development tools.
+
+The primary goal is to create one centralized API gateway that connects multiple AI providers, supports custom provider configurations, combines providers into routing groups, and exposes unified APIs compatible with Claude Code and OpenAI-compatible clients.
+
+The system must remain available when the owner's personal computer is turned off.
+
+This is NOT a local-only application.
+
+### Core Principles
+
+- Cloud hosted and accessible 24/7, subject to hosting availability.
+- One centralized API endpoint.
+- One private owner account.
+- Support many AI providers.
+- Support custom OpenAI-compatible and Anthropic-compatible providers.
+- Flexible routing and combination strategies.
+- Claude Code compatibility is a first-class requirement.
+- Secure provider credential management.
+- Easy to extend with new providers.
+- Clean, modern, professional dashboard.
+- No unnecessary complexity or enterprise multi-tenant features.
+
+---
+
+# 2. TECHNOLOGY STACK
+
+Use the following technology stack.
+
+### Frontend
+- Next.js (App Router)
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+- Lucide Icons
+- React
+- Recharts for analytics
+
+### Backend
+- Next.js Route Handlers
+- TypeScript
+- Node.js runtime on Vercel
+- Native Web Streams for streaming
+- Zod for validation
+
+### Database
+- Firebase Cloud Firestore
+
+### Authentication
+- Firebase Authentication
+- Google Sign-In and secure owner authentication
+- Owner UID allowlist
+
+### Deployment
+- Vercel for frontend and backend deployment
+- Firebase for database and authentication
+- Vercel environment variables for secrets
+- Custom domain support
+
+Do not use local SQLite, local JSON files, or local server storage as the primary database.
+
+Do not require a personal PC to remain online.
+
+### Important Deployment Requirement
+
+All AI Gateway API requests must run through Vercel Node.js serverless functions.
+
+Use streaming responses and configure maxDuration according to the actual Vercel plan and available limits.
+
+Do not assume unlimited execution time.
+
+Implement timeout handling, connection cancellation, streaming backpressure, and clear error reporting.
+
+Do not use Edge Runtime for the main provider proxy unless a particular feature is proven compatible.
+
+If a future requirement exceeds Vercel's execution limits, document the need for an optional external long-running worker rather than pretending the limitation does not exist.
+
+---
+
+# 3. SYSTEM ARCHITECTURE
+
+Build the following modular architecture:
+
+Owner Dashboard
+       |
+       v
+Next.js Application on Vercel
+       |
+       +---- Firebase Authentication
+       |
+       +---- Firestore Database
+       |
+       +---- Secure API Gateway
+                    |
+                    +---- Authentication Middleware
+                    |
+                    +---- Provider Registry
+                    |
+                    +---- Model Registry
+                    |
+                    +---- Routing Engine
+                    |
+                    +---- Combo Engine
+                    |
+                    +---- Fallback Engine
+                    |
+                    +---- Load Balancer
+                    |
+                    +---- Streaming Proxy
+                    |
+                    +---- Usage Tracker
+                    |
+                    v
+              AI Providers
+
+Keep all modules independent and maintain a clean separation between UI, database, business logic, and provider adapters.
+
+---
+
+# 4. PROVIDER MANAGEMENT SYSTEM
+
+Create a flexible Provider Management System.
+
+The owner must be able to add, configure, test, edit, disable, and delete provider configurations.
+
+Support the following provider categories:
+
+### Official Providers
+- OpenAI
+- Anthropic
+- Google Gemini
+- Mistral
+- DeepSeek
+- Groq
+- xAI
+- Cohere
+
+### AI Aggregators
+- OpenRouter
+- Together AI
+- Fireworks AI
+- Any compatible AI gateway
+
+### Custom Providers
+Allow adding any provider that supports a documented compatible API protocol.
+
+Never hardcode the provider list as the only available providers.
+
+### Custom Provider Form
+
+Fields:
+
+- Provider Name
+- Provider ID
+- Provider Type
+- API Base URL
+- API Key
+- API Protocol
+- Custom Headers
+- Available Models
+- Default Model
+- Request Timeout
+- Priority
+- Maximum Retry Count
+- Enabled / Disabled
+- Custom Metadata
+
+Supported protocols:
+
+1. OpenAI Chat Completions API
+2. OpenAI Responses API
+3. Anthropic Messages API
+4. Google Gemini API
+5. Custom HTTP Adapter
+
+Use a modular adapter architecture.
+
+A new provider should be addable without rewriting the routing engine.
+
+### Provider Testing
+
+Provide a Test Connection feature.
+
+Show:
+
+- Connection status
+- Authentication status
+- Available models when supported
+- Response latency
+- Error message
+- Last successful connection
+- Last health check
+
+Never expose provider API keys in frontend responses or logs.
+
+---
+
+# 5. MODEL MANAGEMENT
+
+Build a centralized model registry.
+
+Every provider can have multiple models.
+
+Model information:
+
+- Model ID
+- Display Name
+- Provider
+- API Model Name
+- Context Window
+- Input Capabilities
+- Output Capabilities
+- Supports Streaming
+- Supports Tool Calling
+- Supports Vision
+- Supports Reasoning
+- Supports JSON Output
+- Enabled / Disabled
+- Optional Input and Output Pricing
+
+Support model aliases.
+
+Examples:
+
+- my-fast
+- my-coding
+- my-reasoning
+- my-vision
+- my-best
+
+A model alias must resolve to the configured provider and actual model.
+
+Allow multiple aliases to point to different routing profiles.
+
+Do not assume all models support every feature. Maintain explicit capability metadata and validate compatibility before routing.
+
+---
+
+# 6. ROUTING ENGINE
+
+This is the most important component.
+
+Build four primary routing modes.
+
+## A. AUTO ROUTING
+
+Automatically choose the most appropriate configured provider and model.
+
+Consider:
+
+- Model capability
+- Task type
+- Provider availability
+- Latency
+- User-defined priority
+- Configured cost preferences
+- Rate limits
+- Context window
+- Tool calling requirements
+
+Allow the owner to configure routing rules.
+
+Example:
+
+Simple task -> Fast model
+
+Coding task -> Coding-capable model
+
+Complex reasoning -> Reasoning-capable model
+
+Vision task -> Vision-capable model
+
+Do not claim to understand task complexity perfectly. Provide transparent rule-based routing first and optional AI-based classification later.
+
+## B. MANUAL ROUTING
+
+Allow selecting an exact:
+
+- Provider
+- Model
+- Model alias
+
+The selected provider must be used unless an explicitly enabled fallback policy applies.
+
+## C. COMBO ROUTING
+
+Allow creating custom routing groups.
+
+Each combo includes:
+
+- Combo Name
+- Description
+- Primary Provider
+- Secondary Providers
+- Ordered Provider List
+- Routing Strategy
+- Model Mapping
+- Retry Rules
+- Timeout Rules
+- Enabled / Disabled
+
+Support these strategies:
+
+### Sequential Combo
+
+Try providers in configured order.
+
+Example:
+
+Provider A -> Provider B -> Provider C
+
+Move to the next provider when a retryable failure occurs.
+
+### Parallel Combo
+
+Send requests to multiple providers concurrently.
+
+Allow configurable response-selection strategies:
+
+- First successful response
+- First complete response
+- Preferred provider response
+- Lowest-latency eligible response
+
+Make parallel requests optional because they can increase API costs.
+
+Cancel unnecessary requests when possible.
+
+Never treat an incomplete streamed response as a successful complete answer.
+
+### Weighted Load Balancing
+
+Distribute requests according to configurable weights.
+
+Example:
+
+Provider A: 50%
+
+Provider B: 30%
+
+Provider C: 20%
+
+Provide configurable distribution and health-aware exclusion.
+
+### Priority Routing
+
+Try providers based on configured priority and availability.
+
+Allow the owner to edit priority without changing provider configurations.
+
+---
+
+# 7. FALLBACK AND RETRY ENGINE
+
+Build a reliable fallback engine.
+
+Handle:
+
+- Provider unavailable
+- Connection timeout
+- Rate limit
+- Temporary server errors
+- Authentication errors
+- Unsupported model
+- Invalid request
+- Provider overload
+
+Use exponential backoff with jitter for retryable failures.
+
+Respect provider Retry-After headers where available.
+
+Do not retry permanent errors such as invalid credentials without an explicit configuration change.
+
+Important:
+
+- Do not automatically switch providers after response streaming has already begun.
+- Do not silently duplicate potentially billable requests.
+- Use idempotency keys where supported.
+- Record fallback reasons.
+- Record each provider attempt.
+- Prevent infinite retry loops.
+- Configure maximum retry attempts.
+
+Show fallback history in the dashboard.
+
+---
+
+# 8. CLAUDE CODE COMPATIBILITY
+
+This is a mandatory core requirement.
+
+The gateway must support Claude Code through an Anthropic Messages API-compatible endpoint.
+
+Implement:
+
+POST /v1/messages
+
+Also support where appropriate:
+
+POST /v1/messages/count_tokens
+
+GET /v1/models
+
+The implementation must preserve the Anthropic Messages API request and response semantics required by Claude Code.
+
+### Required capabilities
+
+- Anthropic Messages API compatibility
+- Streaming SSE responses
+- Correct event ordering
+- Message start events
+- Content block events
+- Tool-use blocks
+- Tool results
+- Message completion events
+- Usage metadata
+- Stop reasons
+- Error responses
+- Model aliases
+- System instructions
+- Multi-turn conversations
+- Multiple content blocks
+- Tool calling
+- Extended thinking where supported by the selected model and protocol
+
+Do not simply convert every request into a basic text completion.
+
+Preserve supported request parameters and content blocks.
+
+Unsupported features must produce clear errors rather than silently being discarded.
+
+### Claude Code Configuration
+
+The owner should be able to configure Claude Code with:
+
+ANTHROPIC_BASE_URL=https://YOUR_DOMAIN
+
+ANTHROPIC_AUTH_TOKEN=YOUR_GATEWAY_API_KEY
+
+Provide a generated setup guide and copyable terminal commands.
+
+Support appropriate model environment overrides, including:
+
+- ANTHROPIC_MODEL
+- ANTHROPIC_DEFAULT_SONNET_MODEL
+- ANTHROPIC_DEFAULT_OPUS_MODEL
+- ANTHROPIC_DEFAULT_HAIKU_MODEL
+
+Map these aliases to configured gateway models.
+
+The owner must be able to select a routing profile for Claude Code.
+
+### Claude Code Testing
+
+Create a compatibility test suite that checks:
+
+1. Authentication
+2. Basic messages
+3. Streaming
+4. Multi-turn conversations
+5. Tool-use requests
+6. Long responses
+7. Usage reporting
+8. Error handling
+9. Model alias resolution
+10. Fallback before streaming begins
+
+Do not claim full Claude Code compatibility until the tests pass.
+
+---
+
+# 9. OPENAI API COMPATIBILITY
+
+Implement:
+
+POST /v1/chat/completions
+
+POST /v1/responses
+
+GET /v1/models
+
+Support:
+
+- Streaming
+- Non-streaming
+- Model aliases
+- Tool calling
+- Function calling where supported
+- JSON response formats where supported
+- Usage reporting
+- Error mapping
+- Request validation
+
+Keep OpenAI and Anthropic protocol adapters separate.
+
+Do not assume their request and response formats are interchangeable.
+
+Provide compatibility tests using official client libraries where practical.
+
+---
+
+# 10. API KEY MANAGEMENT
+
+Create a private API key management page.
+
+The owner can:
+
+- Generate API keys
+- Name API keys
+- Set key permissions
+- Set usage limits
+- Revoke keys
+- View creation date
+- View last-used date
+- View usage
+
+Use secure random key generation.
+
+Store only a cryptographic hash of gateway API keys.
+
+Show the raw key only once at creation.
+
+Support key prefixes for identification.
+
+Provider API credentials must be encrypted server-side before database storage.
+
+Use authenticated encryption such as AES-256-GCM with a separate environment-managed encryption secret.
+
+Never store encryption secrets in Firestore.
+
+Never return decrypted provider secrets to the browser.
+
+Use Firebase Admin SDK only on the server.
+
+Configure Google Cloud IAM/service credentials correctly.
+
+---
+
+# 11. USAGE ANALYTICS AND COST TRACKING
+
+Build a detailed analytics dashboard.
+
+Track:
+
+- Total requests
+- Successful requests
+- Failed requests
+- Total input tokens
+- Total output tokens
+- Provider usage
+- Model usage
+- Routing mode usage
+- Fallback frequency
+- Average latency
+- Error rate
+- Estimated cost
+
+Provide:
+
+- Today
+- Last 7 days
+- Last 30 days
+- Custom date range
+
+Create charts:
+
+1. Requests over time
+2. Token usage
+3. Provider distribution
+4. Model distribution
+5. Estimated cost
+6. Latency trends
+7. Failure rate
+
+Pricing must be configurable and timestamped.
+
+Clearly label costs as estimates when exact provider billing data is unavailable.
+
+Do not invent token usage or pricing.
+
+Allow exporting analytics as CSV.
+
+Use efficient aggregation instead of loading the entire request history into the browser.
+
+---
+
+# 12. PROVIDER HEALTH MONITORING
+
+Build a health monitoring service.
+
+Track:
+
+- Availability
+- Response latency
+- Recent failures
+- Rate-limit events
+- Last successful request
+- Current health state
+
+Possible states:
+
+- Healthy
+- Degraded
+- Unavailable
+- Disabled
+- Unknown
+
+Use configurable health-check intervals.
+
+Avoid excessive health-check traffic and costs.
+
+Temporarily exclude unhealthy providers from automatic routing.
+
+Automatically restore providers after successful health checks.
+
+Allow manual provider disable/enable.
+
+---
+
+# 13. DASHBOARD UI/UX
+
+Build a beautiful, premium, modern AI infrastructure dashboard.
+
+Design direction:
+
+- Professional dark theme by default
+- Optional light theme
+- Minimal visual clutter
+- Responsive layout
+- Consistent spacing
+- Subtle animations
+- Clear status indicators
+- Modern cards and charts
+- Excellent typography
+
+### Sidebar Navigation
+
+1. Overview
+2. Providers
+3. Models
+4. Routing
+5. Combo Builder
+6. API Keys
+7. Claude Code
+8. Usage & Analytics
+9. Request Logs
+10. Health Monitoring
+11. Settings
+
+### Overview Page
+
+Display:
+
+- Total Requests
+- Active Providers
+- Available Models
+- Total Token Usage
+- Estimated Cost
+- Success Rate
+- Average Latency
+
+Also show:
+
+- Provider status list
+- Recent requests
+- Recent errors
+- Current routing mode
+- Active combo
+- Quick actions
+
+### Provider Page
+
+Include:
+
+- Provider cards
+- Add Provider button
+- Edit configuration
+- Test connection
+- Enable/disable
+- Model management
+- Health status
+
+### Combo Builder
+
+Build a visual routing configuration interface.
+
+Allow:
+
+- Creating combos
+- Adding providers
+- Drag-and-drop ordering
+- Setting weights
+- Setting primary provider
+- Setting fallbacks
+- Selecting routing strategies
+- Testing the combo
+
+Also provide a simple form-based editor as an alternative.
+
+### Claude Code Page
+
+Display:
+
+- Gateway URL
+- Gateway API key selection
+- Available model aliases
+- Environment variables
+- Copyable setup commands
+- Connection test
+- Claude Code compatibility status
+
+### Settings Page
+
+Include:
+
+- Account settings
+- Theme
+- Security
+- Default routing mode
+- Default model
+- Timeout settings
+- Retry settings
+- Usage limits
+- Cost limits
+- Data retention
+- Backup and export
+
+---
+
+# 14. FIRESTORE DATABASE DESIGN
+
+Use a structured Firestore schema.
+
+Suggested collections:
+
+users/{uid}
+
+users/{uid}/providers/{providerId}
+
+users/{uid}/models/{modelId}
+
+users/{uid}/combos/{comboId}
+
+users/{uid}/routingRules/{ruleId}
+
+users/{uid}/apiKeys/{keyId}
+
+users/{uid}/requestLogs/{requestId}
+
+users/{uid}/usageDaily/{date}
+
+users/{uid}/healthChecks/{checkId}
+
+users/{uid}/settings/config
+
+Store sensitive provider configuration encrypted.
+
+Store gateway API key hashes, never raw keys.
+
+Use server-side validation and ownership checks.
+
+Create appropriate indexes.
+
+Implement pagination for request logs.
+
+Use Firestore transactions or atomic operations for counters where appropriate.
+
+Avoid unnecessary high-frequency writes.
+
+Implement a retention policy for old logs.
+
+### Firestore Security
+
+- Only the authorized owner may access the dashboard.
+- Never allow public database access.
+- Deny unauthorized client writes to protected collections.
+- Validate document ownership.
+- Do not trust client-provided role or UID values.
+- Use Firebase Admin SDK on the server with IAM-controlled access.
+- Remember that Admin SDK operations bypass Firestore Security Rules.
+- Configure server-side authorization independently.
+- Test security rules before production deployment.
+
+---
+
+# 15. SECURITY REQUIREMENTS
+
+Security is a top priority.
+
+Implement:
+
+- Firebase Authentication
+- Owner UID allowlist
+- Secure session handling
+- Gateway API authentication
+- Provider secret encryption
+- API key hashing
+- HTTPS
+- Request validation
+- Rate limiting
+- Request size limits
+- CORS configuration
+- SSRF protection
+- URL validation for custom providers
+- Safe error messages
+- Secret redaction
+- Audit logging
+- Spending limits
+- Emergency kill switch
+
+For custom provider URLs:
+
+- Allow HTTPS by default.
+- Block localhost and private network addresses.
+- Block cloud metadata endpoints.
+- Prevent redirects to prohibited addresses.
+- Validate DNS resolution and resolved IPs.
+- Revalidate redirect destinations.
+- Prevent SSRF.
+
+Never log API keys, authorization headers, raw secrets, or sensitive request payloads.
+
+Add a global switch to disable all outgoing AI provider requests immediately.
+
+---
+
+# 16. REQUEST LOGGING
+
+Create request logs with:
+
+- Request ID
+- Timestamp
+- Client type
+- Requested model
+- Resolved model
+- Selected provider
+- Routing strategy
+- Response status
+- Latency
+- Token usage
+- Estimated cost
+- Retry count
+- Fallback history
+- Error category
+
+Avoid storing full prompts and responses by default.
+
+Allow optional diagnostic logging with explicit owner consent and configurable retention.
+
+Provide filters:
+
+- Provider
+- Model
+- Status
+- Routing mode
+- Date
+- Errors
+
+---
+
+# 17. SPENDING AND USAGE LIMITS
+
+Implement:
+
+- Global daily request limit
+- Global monthly estimated spending limit
+- Provider-specific limits
+- Model-specific limits
+- Per-key limits
+- Maximum tokens per request
+- Maximum request duration
+
+When a spending limit is reached:
+
+- Stop additional requests where configured.
+- Display a clear warning.
+- Never silently bypass the limit.
+- Allow the owner to adjust the limit.
+
+Use estimated cost calculations based on configured model pricing.
+
+---
+
+# 18. BACKUP AND RECOVERY
+
+Provide:
+
+- Firestore data export guidance
+- Configuration export
+- Model registry export
+- Combo export/import
+- API key revocation
+- Recovery documentation
+
+Never include raw provider secrets or raw gateway API keys in exports.
+
+Allow restoring non-secret configuration safely.
+
+---
+
+# 19. TESTING REQUIREMENTS
+
+Create automated tests for:
+
+### Unit Tests
+- Provider adapters
+- Model mapping
+- Routing decisions
+- Combo strategies
+- Retry logic
+- Fallback logic
+- API authentication
+- Cost calculations
+- Validation
+
+### Integration Tests
+- Firebase authentication
+- Firestore access
+- Provider connection
+- Streaming proxy
+- API endpoints
+- Model aliases
+
+### Security Tests
+- Unauthorized API requests
+- Invalid API keys
+- Cross-owner access
+- Secret exposure
+- SSRF attempts
+- Rate-limit bypass
+- Invalid provider URLs
+
+### End-to-End Tests
+- Login
+- Add provider
+- Test provider
+- Add model
+- Create combo
+- Generate API key
+- Make API request
+- Test Claude Code configuration
+- Review usage analytics
+
+Use mocked provider responses for automated tests.
+
+Never use real paid provider APIs in automated tests unless explicitly configured.
+
+---
+
+# 20. DEVELOPMENT RULES
+
+Follow these rules throughout development.
+
+1. Build a working product, not just a UI prototype.
+2. Do not create fake provider data in production.
+3. Do not use hardcoded API keys.
+4. Do not leave critical buttons non-functional.
+5. Do not use mock analytics as real usage data.
+6. Implement loading, empty, success, and error states.
+7. Validate all inputs.
+8. Keep components modular.
+9. Keep provider adapters independent.
+10. Use TypeScript strictly.
+11. Handle streaming correctly.
+12. Write tests for critical functionality.
+13. Document environment variables.
+14. Provide Firebase setup instructions.
+15. Provide Vercel deployment instructions.
+16. Provide Firestore indexes and security rules.
+17. Provide a complete README.
+18. Avoid unnecessary paid infrastructure.
+19. Make the interface easy for a non-developer to operate.
+20. Never claim a feature is complete unless it is implemented and tested.
+
+---
+
+# 21. PROJECT STRUCTURE
+
+Use a clean project structure similar to:
+
+src/
+  app/
+    dashboard/
+    providers/
+    models/
+    routing/
+    combos/
+    api-keys/
+    claude-code/
+    analytics/
+    logs/
+    settings/
+    api/
+      v1/
+        messages/
+        messages/
+          count_tokens/
+        chat/
+          completions/
+        responses/
+        models/
+
+  components/
+    dashboard/
+    providers/
+    models/
+    routing/
+    combos/
+    analytics/
+    ui/
+
+  lib/
+    firebase/
+    auth/
+    security/
+    encryption/
+    validation/
+    analytics/
+
+  server/
+    gateway/
+    providers/
+    adapters/
+    routing/
+    fallback/
+    streaming/
+    usage/
+    monitoring/
+    logging/
+
+  types/
+
+  config/
+
+tests/
+  unit/
+  integration/
+  e2e/
+
+firestore.rules
+
+firestore.indexes.json
+
+.env.example
+
+README.md
+
+Adapt this structure when needed, but maintain modular separation.
+
+---
+
+# 22. IMPLEMENTATION ROADMAP
+
+Do not try to implement everything in one untested step.
+
+Build in the following phases.
+
+## Phase 1: Foundation
+
+- Create Next.js project.
+- Configure TypeScript.
+- Configure Tailwind and shadcn/ui.
+- Connect Firebase.
+- Implement owner authentication.
+- Configure Firestore.
+- Build dashboard layout.
+- Create provider data model.
+
+Deliverable: Working authenticated dashboard.
+
+## Phase 2: Provider Engine
+
+- Provider CRUD.
+- Secure secret storage.
+- Provider adapters.
+- Connection testing.
+- Model registry.
+- Custom provider support.
+
+Deliverable: Working provider management.
+
+## Phase 3: API Gateway
+
+- Gateway API key authentication.
+- OpenAI-compatible endpoints.
+- Anthropic Messages endpoint.
+- Streaming proxy.
+- Model aliases.
+- Usage tracking.
+
+Deliverable: Working unified API.
+
+## Phase 4: Routing Engine
+
+- Auto routing.
+- Manual routing.
+- Sequential combos.
+- Parallel combos.
+- Weighted load balancing.
+- Retry and fallback.
+
+Deliverable: Working routing system.
+
+## Phase 5: Claude Code
+
+- Anthropic protocol compatibility.
+- Claude Code setup page.
+- Environment configuration.
+- Streaming and tool-use tests.
+- Compatibility verification.
+
+Deliverable: Claude Code can use the gateway.
+
+## Phase 6: Analytics and Monitoring
+
+- Usage analytics.
+- Cost tracking.
+- Provider health.
+- Request logs.
+- Spending limits.
+- Alerts.
+
+Deliverable: Full monitoring dashboard.
+
+## Phase 7: Production
+
+- Security audit.
+- Firestore rules.
+- Vercel configuration.
+- Domain setup.
+- Environment variables.
+- Backup procedures.
+- Performance tests.
+- Production deployment.
+
+Deliverable: Secure, cloud-hosted personal AI Gateway.
+
+---
+
+# 23. FINAL ACCEPTANCE CRITERIA
+
+The project is complete only when:
+
+1. The owner can securely log in.
+2. The owner can add multiple AI providers.
+3. The owner can configure custom compatible providers.
+4. The owner can add and manage models.
+5. The owner can create model aliases.
+6. The owner can use Auto Routing.
+7. The owner can use Manual Routing.
+8. The owner can create Sequential Combos.
+9. The owner can create Parallel Combos.
+10. The owner can configure Weighted Load Balancing.
+11. Automatic fallback works correctly.
+12. Streaming works.
+13. OpenAI-compatible clients can use the gateway.
+14. Claude Code can connect through the Anthropic Messages API.
+15. Tool calling works with supported models.
+16. Usage and estimated costs are recorded.
+17. Provider health is monitored.
+18. API keys are securely managed.
+19. Firestore access is protected.
+20. The application is deployed on Vercel.
+21. The gateway works without the owner's PC being online.
+22. All critical functionality has automated tests.
+
+---
+
+# 24. HOW TO WORK WITH THE PROJECT OWNER
+
+The owner is building this application with AI assistance and is not an experienced software developer.
+
+Therefore:
+
+- Explain technical steps in simple language.
+- Never assume infrastructure is already configured.
+- Give exact commands when needed.
+- Explain where environment variables go.
+- Explain Firebase Console configuration.
+- Explain Vercel deployment.
+- Ask for credentials through secure environment configuration, never through source code or chat.
+- Do not ask the owner to manually edit dozens of files unnecessarily.
+- Prefer implementing and testing complete features.
+- Keep a progress checklist.
+- Explain errors and provide exact fixes.
+- Do not skip security to save time.
+
+Before implementation:
+
+1. Inspect the existing project.
+2. Identify existing code and configuration.
+3. Preserve useful existing functionality.
+4. Prepare a detailed implementation plan.
+5. Identify external service requirements.
+6. Identify Vercel plan limitations.
+7. Identify Firebase configuration requirements.
+
+Do not start by generating every file blindly.
+
+Implement one phase at a time.
+
+After each phase:
+
+- Run tests.
+- Fix errors.
+- Update documentation.
+- Report completed functionality.
+- Report remaining work.
+
+Do not stop after creating a beautiful dashboard.
+
+The final goal is a real, working, secure, cloud-hosted Unified AI Gateway that the owner can use as their central AI infrastructure across Claude Code, OpenAI-compatible applications, CLI tools, and future AI clients.
+
+**Build it as a reliable personal AI infrastructure platform, not merely another AI dashboard.**

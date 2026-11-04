@@ -1,0 +1,6 @@
+{
+  "name": "NexusGate AI — Unified Cloud AI Gateway",
+  "description": "Personal Cloud AI Gateway & LLM Routing Infrastructure with Claude Code and OpenAI API compatibility, combo routing, fallback engine, and real-time usage analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

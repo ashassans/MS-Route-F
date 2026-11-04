@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User preferences and security settings for NexusGate AI",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The Firebase Auth user ID" },
+        "defaultFallbackEnabled": { "type": "boolean", "description": "Whether fallback failover is enabled" },
+        "logRetentionDays": { "type": "number", "description": "Days to keep request traces" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["userId"]
+    },
+    "GatewayApiKey": {
+      "title": "GatewayApiKey",
+      "description": "Client API keys generated for Claude Code or other apps",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique key identifier" },
+        "userId": { "type": "string", "description": "Owner user UID" },
+        "name": { "type": "string", "description": "Human-friendly label" },
+        "prefix": { "type": "string", "description": "Key prefix for recognition" },
+        "keyHash": { "type": "string", "description": "SHA-256 hash of secret key" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation" },
+        "lastUsedAt": { "type": "string", "description": "ISO timestamp of last use" }
+      },
+      "required": ["id", "userId", "name", "prefix", "keyHash", "createdAt"]
+    },
+    "RequestLog": {
+      "title": "RequestLog",
+      "description": "Historical audit and telemetry trace of AI requests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Log entry unique ID" },
+        "userId": { "type": "string", "description": "Owner user UID" },
+        "timestamp": { "type": "number", "description": "Epoch timestamp in milliseconds" },
+        "modelRequested": { "type": "string", "description": "Requested model or alias" },
+        "modelResolved": { "type": "string", "description": "Target model after routing" },
+        "provider": { "type": "string", "description": "Executing provider" },
+        "status": { "type": "string", "description": "Success or error code" },
+        "latencyMs": { "type": "number", "description": "Response latency in milliseconds" }
+      },
+      "required": ["id", "userId", "timestamp", "modelRequested", "modelResolved", "provider", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/settings/{settingId}": {
+      "schema": "UserSettings",
+      "description": "User specific configurations"
+    },
+    "/users/{userId}/keys/{keyId}": {
+      "schema": "GatewayApiKey",
+      "description": "User generated gateway API keys"
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": "RequestLog",
+      "description": "Audited request traces for user"
+    }
+  }
+}
