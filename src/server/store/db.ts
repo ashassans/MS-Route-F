@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type {
   ProviderConfig,
@@ -13,7 +14,9 @@ import type {
 } from '../../types/gateway.ts';
 import { encryptSecret, hashGatewayKey } from '../security/encryption.ts';
 
-const DB_FILE = path.resolve(process.cwd(), '.gateway-data.json');
+const DB_FILE = process.env.VERCEL
+  ? path.join(os.tmpdir(), '.gateway-data.json')
+  : path.resolve(process.cwd(), '.gateway-data.json');
 
 interface GatewayDatabaseState {
   providers: ProviderConfig[];

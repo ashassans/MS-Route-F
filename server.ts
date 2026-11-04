@@ -1,42 +1,16 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import gatewayV1Router from './src/server/routes/gateway-v1.ts';
-import dashboardApiRouter from './src/server/routes/dashboard-api.ts';
-
-dotenv.config();
+import { createGatewayApp } from './src/server/app.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
-  const app = express();
+  const app = createGatewayApp();
   const PORT = Number(process.env.PORT) || 3000;
   const isProd = process.env.NODE_ENV === 'production';
 
-  // Request parsing & CORS headers
-  app.use(express.json({ limit: '15mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '15mb' }));
-
-  // CORS support for Claude Code and external AI clients
-  app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, x-msroute-client, x-nexus-client');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-    next();
-  });
-
-  // Mount API Gateway V1 endpoints (Claude Code & OpenAI compatible)
-  app.use('/v1', gatewayV1Router);
-
-  // Mount Dashboard Management APIs
-  app.use('/api', dashboardApiRouter);
-
-  // Frontend Serving: Vite Middleware in Dev, Static in Prod
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
