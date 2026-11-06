@@ -97,10 +97,10 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
           <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
+            aria-label="Search logs"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by model, provider, or request ID..."
-            className="w-full bg-white border border-[#e8e2d8] rounded-2xl pl-10 pr-4 py-2.5 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-[#205e3b] shadow-xs"
+            className="w-full bg-white border border-[#e8e2d8] rounded-2xl pl-10 pr-4 py-2 text-xs text-stone-800 focus:outline-none focus:border-[#205e3b] shadow-xs"
           />
         </div>
 

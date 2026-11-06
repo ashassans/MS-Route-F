@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Lock,
   KeyRound,
+  Sparkles,
 } from 'lucide-react';
 import type { ProviderConfig, ProviderType, ApiProtocol, HealthStatus } from '../../types/gateway.ts';
 import { readApiJson } from '../../lib/api.ts';
@@ -105,10 +106,16 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
     success: boolean;
     latencyMs?: number;
     error?: string;
+    availableModels?: string[];
   } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Model detector state inside modal
+  const [isDetectingModels, setIsDetectingModels] = useState(false);
+  const [detectedModels, setDetectedModels] = useState<string[] | null>(null);
+  const [detectModelError, setDetectModelError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     id: '',
@@ -117,7 +124,6 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
     baseUrl: PROVIDER_PRESETS.gemini.baseUrl,
     apiKey: '',
     protocol: PROVIDER_PRESETS.gemini.protocol,
-    customHeaders: '',
     models: PROVIDER_PRESETS.gemini.suggestedModels,
     defaultModel: 'gemini-2.5-flash',
     timeoutMs: 30000,
@@ -129,6 +135,8 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
   const handleOpenAdd = () => {
     setEditingProvider(null);
     setFormError(null);
+    setDetectedModels(null);
+    setDetectModelError(null);
     const preset = PROVIDER_PRESETS.gemini;
     setFormData({
       id: `prov-${Date.now().toString().slice(-5)}`,
@@ -137,7 +145,6 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
       baseUrl: preset.baseUrl,
       apiKey: '',
       protocol: preset.protocol,
-      customHeaders: '',
       models: preset.suggestedModels,
       defaultModel: preset.suggestedModels.split(',')[0]?.trim() || '',
       timeoutMs: 30000,
@@ -150,6 +157,8 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
 
   const handleSelectType = (nextType: ProviderType) => {
     const preset = PROVIDER_PRESETS[nextType];
+    setDetectedModels(null);
+    setDetectModelError(null);
     if (editingProvider) {
       setFormData({ ...formData, type: nextType });
       return;
@@ -173,6 +182,8 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
   const handleOpenEdit = (prov: ProviderConfig) => {
     setEditingProvider(prov);
     setFormError(null);
+    setDetectedModels(null);
+    setDetectModelError(null);
     setFormData({
       id: prov.id,
       name: prov.name,
@@ -180,10 +191,6 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
       baseUrl: prov.baseUrl,
       apiKey: '',
       protocol: prov.protocol,
-      customHeaders:
-        prov.customHeaders && Object.keys(prov.customHeaders).length > 0
-          ? JSON.stringify(prov.customHeaders, null, 2)
-          : '',
       models: prov.models.join(', '),
       defaultModel: prov.defaultModel,
       timeoutMs: prov.timeoutMs,
@@ -194,19 +201,74 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
     setIsModalOpen(true);
   };
 
+  const handleTestAndFetchModels = async () => {
+    if (!formData.baseUrl.trim()) {
+      setDetectModelError('Enter Base URL first');
+      return;
+    }
+    setIsDetectingModels(true);
+    setDetectModelError(null);
+    setDetectedModels(null);
+
+    try {
+      const res = await fetch('/api/providers/test-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingProvider ? editingProvider.id : undefined,
+          baseUrl: formData.baseUrl.trim(),
+          apiKey: formData.apiKey.trim() || undefined,
+          protocol: formData.protocol,
+          type: formData.type,
+        }),
+      });
+
+      const data = await readApiJson(res, 'Test Models');
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Connection failed');
+      }
+
+      const found: string[] = Array.isArray(data.models) ? data.models : [];
+      setDetectedModels(found);
+      if (found.length === 0) {
+        setDetectModelError('Connected, but no models found');
+      }
+    } catch (err: any) {
+      setDetectModelError(err.message || 'Connection failed');
+    } finally {
+      setIsDetectingModels(false);
+    }
+  };
+
+  const handleApplyDetectedModels = (modelsToApply: string[]) => {
+    setFormData({
+      ...formData,
+      models: modelsToApply.join(', '),
+      defaultModel: modelsToApply[0] || formData.defaultModel,
+    });
+  };
+
+  const handleToggleSingleModel = (modelName: string) => {
+    const current = formData.models
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean);
+    let next: string[];
+    if (current.includes(modelName)) {
+      next = current.filter((m) => m !== modelName);
+    } else {
+      next = [...current, modelName];
+    }
+    setFormData({
+      ...formData,
+      models: next.join(', '),
+      defaultModel: next[0] || '',
+    });
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-
-    let parsedHeaders: Record<string, string> = {};
-    if (formData.customHeaders.trim()) {
-      try {
-        parsedHeaders = JSON.parse(formData.customHeaders);
-      } catch {
-        setFormError('Custom Headers must be valid JSON.');
-        return;
-      }
-    }
 
     const modelList = formData.models
       .split(',')
@@ -220,7 +282,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
         baseUrl: formData.baseUrl.trim(),
         apiKey: formData.apiKey.trim() || undefined,
         protocol: formData.protocol,
-        customHeaders: parsedHeaders,
+        customHeaders: editingProvider?.customHeaders || {},
         models: modelList,
         defaultModel: formData.defaultModel.trim() || modelList[0] || '',
         timeoutMs: Number(formData.timeoutMs),
@@ -274,6 +336,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
         success: Boolean(data.success),
         latencyMs: data.latencyMs,
         error: data.error,
+        availableModels: data.availableModels,
       });
       onRefresh();
     } catch (err: any) {
@@ -290,63 +353,63 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
   const renderHealthBadge = (status: HealthStatus, enabled: boolean) => {
     if (!enabled) {
       return (
-        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-[#faf8f5] text-stone-500 border border-[#e5dfd5]">
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider bg-[#faf8f5] text-stone-400 border border-[#e5dfd5]">
           Disabled
         </span>
       );
     }
     if (status === 'healthy') {
       return (
-        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-[#e2f1e6] text-[#1e5c36] border border-[#c4e6ce]">
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider bg-[#e2f1e6] text-[#1e5c36] border border-[#c4e6ce]">
           Healthy
         </span>
       );
     }
     if (status === 'unknown') {
       return (
-        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-[#faf8f5] text-stone-600 border border-[#e5dfd5]">
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider bg-[#faf8f5] text-stone-500 border border-[#e5dfd5]">
           Untested
         </span>
       );
     }
     if (status === 'degraded') {
       return (
-        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-[#fefce8] text-[#854d0e] border border-[#fef08a]">
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider bg-[#fefce8] text-[#854d0e] border border-[#fef08a]">
           Degraded
         </span>
       );
     }
     return (
-      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-[#fde8e8] text-[#9b1c1c] border border-[#fbd5d5]">
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider bg-[#fde8e8] text-[#9b1c1c] border border-[#fbd5d5]">
         Unavailable
       </span>
     );
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Top Banner and Add Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#eff6f2] border border-[#d6e5dc] rounded-2xl p-4 sm:p-5 shadow-xs">
         <div>
-          <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
+          <h2 className="font-editorial text-xl sm:text-2xl font-medium text-stone-900 flex items-center gap-2">
             <Radio className="w-5 h-5 text-[#1c4d32]" />
-            AI Provider Fleet
+            AI Providers
           </h2>
-          <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-            Configure official AI providers and custom endpoints. All API keys are encrypted at rest via AES-256-GCM and protected against SSRF.
+          <p className="text-xs text-stone-500 mt-0.5">
+            Manage upstream endpoints and models
           </p>
         </div>
         <button
           onClick={handleOpenAdd}
-          className="px-4 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs shrink-0"
+          className="px-3.5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs shrink-0 self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>Add AI Provider</span>
+          <span>Add Provider</span>
         </button>
       </div>
 
       {actionError && (
-        <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between">
+        <div className="px-3.5 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
           <span>{actionError}</span>
           <button onClick={() => setActionError(null)} className="font-semibold underline ml-3 cursor-pointer">
             Dismiss
@@ -356,26 +419,26 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
 
       {/* Empty State or Provider Cards Grid */}
       {providers.length === 0 ? (
-        <div className="bg-white border border-[#e8e2d8] rounded-3xl p-10 text-center shadow-xs space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#eff6f2] border border-[#d6e5dc] flex items-center justify-center mx-auto text-[#1c4d32]">
-            <Radio className="w-6 h-6" />
+        <div className="bg-white border border-[#e8e2d8] rounded-2xl p-8 text-center shadow-xs space-y-2">
+          <div className="w-10 h-10 rounded-xl bg-[#eff6f2] border border-[#d6e5dc] flex items-center justify-center mx-auto text-[#1c4d32]">
+            <Radio className="w-5 h-5" />
           </div>
-          <h3 className="font-editorial text-xl font-medium text-stone-900">No AI Providers Configured</h3>
-          <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
-            Connect Google Gemini, Anthropic, OpenAI, DeepSeek, Groq, OpenRouter, or any OpenAI-compatible HTTPS endpoint to begin routing requests.
+          <h3 className="text-base font-semibold text-stone-900">No Providers</h3>
+          <p className="text-xs text-stone-500 max-w-sm mx-auto">
+            Connect Gemini, Anthropic, OpenAI, DeepSeek, Groq, or custom endpoints to start routing.
           </p>
           <div className="pt-2">
             <button
               onClick={handleOpenAdd}
-              className="px-5 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-bold inline-flex items-center gap-2 transition cursor-pointer shadow-xs"
+              className="px-4 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Your First Provider</span>
+              <span>Add Provider</span>
             </button>
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {providers.map((p) => {
             const isTesting = testingId === p.id;
             const result = testResult?.id === p.id ? testResult : null;
@@ -384,20 +447,20 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
             return (
               <div
                 key={p.id}
-                className={`bg-white border rounded-3xl p-6 flex flex-col justify-between shadow-xs transition ${
+                className={`bg-white border rounded-2xl p-5 flex flex-col justify-between shadow-xs transition ${
                   p.enabled ? 'border-[#e8e2d8]' : 'border-[#e8e2d8]/60 opacity-70'
                 }`}
               >
                 <div>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-sm text-stone-900">{p.name}</h3>
-                        <span className="px-2 py-0.5 text-[10px] uppercase font-mono font-bold bg-[#faf8f5] text-stone-600 rounded-md border border-[#e5dfd5]">
+                  <div className="flex items-start justify-between gap-2 mb-2.5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-sm text-stone-900 truncate">{p.name}</h3>
+                        <span className="px-1.5 py-0.2 text-[10px] uppercase font-mono font-medium bg-[#faf8f5] text-stone-500 rounded border border-[#e5dfd5]">
                           {p.type}
                         </span>
                       </div>
-                      <p className="text-[11px] text-stone-500 font-mono mt-0.5 truncate max-w-[220px]" title={p.baseUrl}>
+                      <p className="text-[11px] text-stone-400 font-mono mt-0.5 truncate max-w-[200px]" title={p.baseUrl}>
                         {p.baseUrl}
                       </p>
                     </div>
@@ -406,30 +469,30 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
                   </div>
 
                   {/* Specs Box */}
-                  <div className="bg-[#faf8f5] border border-[#e8e2d8] rounded-2xl p-3.5 text-xs space-y-1.5 my-3.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-500">Protocol:</span>
-                      <span className="font-mono text-stone-800 text-[11px] font-semibold">{p.protocol}</span>
+                  <div className="bg-[#faf8f5] border border-[#e8e2d8] rounded-xl p-3 text-xs space-y-1.5 my-3">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-400">Protocol</span>
+                      <span className="font-mono text-stone-700 font-medium">{p.protocol}</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-500">Priority / Retries:</span>
-                      <span className="text-stone-800 font-medium">
-                        Tier {p.priority} (Max {p.maxRetries}x)
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-400">Priority / Retries</span>
+                      <span className="text-stone-700 font-medium">
+                        Tier {p.priority} • {p.maxRetries}x
                       </span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-500">Timeout:</span>
-                      <span className="text-stone-800 font-mono font-medium">{p.timeoutMs / 1000}s</span>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-400">Timeout</span>
+                      <span className="text-stone-700 font-mono">{p.timeoutMs / 1000}s</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-500">Credentials:</span>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-400">Key</span>
                       {p.hasApiKey ? (
-                        <span className="text-[#16a34a] flex items-center gap-1 text-[11px] font-semibold">
-                          <Lock className="w-3 h-3" /> AES-256 Key Set
+                        <span className="text-emerald-700 flex items-center gap-1 font-medium">
+                          <Lock className="w-3 h-3" /> Configured
                         </span>
                       ) : (
-                        <span className="text-amber-700 flex items-center gap-1 text-[11px] font-semibold">
-                          <KeyRound className="w-3 h-3" /> No API Key
+                        <span className="text-stone-400 flex items-center gap-1">
+                          <KeyRound className="w-3 h-3" /> None
                         </span>
                       )}
                     </div>
@@ -437,19 +500,19 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
 
                   {/* Models List */}
                   <div className="text-xs">
-                    <span className="text-stone-500 text-[11px] font-medium">Models ({p.models.length}):</span>
-                    <div className="flex flex-wrap gap-1 mt-1.5">
+                    <span className="text-stone-400 text-[11px]">Models ({p.models.length}):</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
                       {p.models.length === 0 ? (
-                        <span className="text-[11px] text-stone-400 italic">No models listed</span>
+                        <span className="text-[11px] text-stone-400 italic">None listed</span>
                       ) : (
                         <>
                           {p.models.slice(0, 3).map((m) => (
-                            <span key={m} className="px-2 py-0.5 bg-[#f4efe8] text-stone-700 rounded-md text-[10px] font-mono">
+                            <span key={m} className="px-1.5 py-0.5 bg-[#f4efe8] text-stone-700 rounded text-[10px] font-mono">
                               {m}
                             </span>
                           ))}
                           {p.models.length > 3 && (
-                            <span className="px-1.5 py-0.5 bg-[#f4efe8] text-stone-500 rounded-md text-[10px]">
+                            <span className="px-1.5 py-0.5 bg-[#f4efe8] text-stone-500 rounded text-[10px]">
                               +{p.models.length - 3} more
                             </span>
                           )}
@@ -461,7 +524,7 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
                   {/* Live Test Feedback banner */}
                   {result && (
                     <div
-                      className={`mt-3 p-2.5 rounded-xl text-xs flex items-center justify-between ${
+                      className={`mt-3 p-2.5 rounded-xl text-xs flex flex-col gap-1 ${
                         result.success
                           ? 'bg-[#ecf7ef] border border-[#cbe8d2] text-[#166534]'
                           : 'bg-[#fef2f2] border border-[#fecaca] text-[#991b1b]'
@@ -473,53 +536,59 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
                         ) : (
                           <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                         )}
-                        <span className="font-semibold break-words">
-                          {result.success ? `Connected! Latency: ${result.latencyMs}ms` : result.error}
+                        <span className="font-medium truncate">
+                          {result.success ? `Connected (${result.latencyMs}ms)` : result.error}
                         </span>
                       </div>
+                      {result.success && result.availableModels && result.availableModels.length > 0 && (
+                        <div className="text-[10px] text-stone-600 pt-1 border-t border-[#cbe8d2]/60">
+                          <span className="font-semibold text-stone-700">Available: </span>
+                          <span className="font-mono">{result.availableModels.slice(0, 4).join(', ')}</span>
+                          {result.availableModels.length > 4 && ` +${result.availableModels.length - 4} more`}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
                 {/* Action Buttons */}
-                <div className="mt-5 pt-3.5 border-t border-[#f0eae1] flex items-center justify-between gap-2">
+                <div className="mt-4 pt-3 border-t border-[#f0eae1] flex items-center justify-between gap-2">
                   <button
                     onClick={() => handleTestConnection(p.id)}
                     disabled={isTesting}
-                    className="px-3 py-1.5 bg-[#faf8f5] hover:bg-[#f2ede4] text-stone-800 border border-[#e4ded5] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
-                    title="Ping provider endpoint"
+                    className="px-2.5 py-1.5 bg-[#faf8f5] hover:bg-[#f2ede4] text-stone-700 border border-[#e4ded5] rounded-xl text-xs font-medium flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
                   >
                     <Activity className={`w-3.5 h-3.5 text-emerald-600 ${isTesting ? 'animate-spin' : ''}`} />
-                    <span>{isTesting ? 'Pinging...' : 'Test Connection'}</span>
+                    <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
                   </button>
 
                   {isConfirmingDelete ? (
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => handleDelete(p.id)}
-                        className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[11px] font-bold cursor-pointer"
+                        className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-semibold cursor-pointer"
                       >
                         Confirm
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
-                        className="px-2 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-[11px] font-semibold cursor-pointer"
+                        className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-600 rounded-lg text-[11px] cursor-pointer"
                       >
                         Cancel
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleOpenEdit(p)}
-                        className="p-2 text-stone-500 hover:text-stone-900 bg-[#faf8f5] hover:bg-[#f2ede4] border border-[#e4ded5] rounded-xl transition cursor-pointer"
+                        className="p-1.5 text-stone-400 hover:text-stone-800 bg-[#faf8f5] hover:bg-[#f2ede4] border border-[#e4ded5] rounded-xl transition cursor-pointer"
                         title="Edit provider"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(p.id)}
-                        className="p-2 text-stone-500 hover:text-rose-700 bg-[#faf8f5] hover:bg-rose-50 border border-[#e4ded5] rounded-xl transition cursor-pointer"
+                        className="p-1.5 text-stone-400 hover:text-rose-600 bg-[#faf8f5] hover:bg-rose-50 border border-[#e4ded5] rounded-xl transition cursor-pointer"
                         title="Delete provider"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -535,34 +604,34 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
 
       {/* Edit / Add Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-[#e8e2d8] rounded-3xl w-full max-w-xl p-6 shadow-2xl space-y-4 my-8">
+        <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-[#e8e2d8] rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl space-y-4 my-8">
             <div className="flex items-center justify-between border-b border-[#f0eae1] pb-3">
-              <h3 className="font-editorial text-xl font-medium text-stone-900">
-                {editingProvider ? `Edit ${editingProvider.name}` : 'Configure New AI Provider'}
+              <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">
+                {editingProvider ? `Edit ${editingProvider.name}` : 'Add Provider'}
               </h3>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer"
+                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1"
               >
                 ✕
               </button>
             </div>
 
             {formError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-medium">
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
                 {formError}
               </div>
             )}
 
-            <form onSubmit={handleSave} className="space-y-4 text-xs">
+            <form onSubmit={handleSave} className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Category / Preset</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Preset</label>
                   <select
                     value={formData.type}
                     onChange={(e) => handleSelectType(e.target.value as ProviderType)}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   >
                     <option value="gemini">Google Gemini</option>
                     <option value="anthropic">Anthropic</option>
@@ -575,130 +644,167 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
                     <option value="together">Together AI</option>
                     <option value="cohere">Cohere</option>
                     <option value="fireworks">Fireworks AI</option>
-                    <option value="custom">Custom HTTPS Endpoint</option>
+                    <option value="custom">Custom Endpoint</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">API Protocol *</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Protocol</label>
                   <select
                     value={formData.protocol}
                     onChange={(e) => setFormData({ ...formData, protocol: e.target.value as ApiProtocol })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b] font-mono"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b] font-mono text-[11px]"
                   >
-                    <option value="openai-chat">OpenAI Chat Completions API</option>
+                    <option value="openai-chat">OpenAI Chat API</option>
                     <option value="anthropic-messages">Anthropic Messages API</option>
-                    <option value="google-gemini">Google Gemini REST / SDK</option>
+                    <option value="google-gemini">Google Gemini REST</option>
                     <option value="openai-responses">OpenAI Responses API</option>
-                    <option value="custom-http">Custom HTTP Adapter</option>
+                    <option value="custom-http">Custom HTTP</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Provider Name *</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Name</label>
                   <input
                     type="text"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Google Gemini Production"
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Provider ID *</label>
+                  <label className="block text-stone-600 mb-1 font-medium">ID</label>
                   <input
                     type="text"
                     required
                     disabled={Boolean(editingProvider)}
                     value={formData.id}
                     onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono disabled:opacity-60"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono disabled:opacity-50"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-stone-600 mb-1 font-semibold">API Base URL * (HTTPS, SSRF Protected)</label>
+                <label className="block text-stone-600 mb-1 font-medium">Base URL</label>
                 <input
                   type="url"
                   required
                   value={formData.baseUrl}
                   onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
-                  placeholder="https://api.openai.com/v1"
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                 />
               </div>
 
               <div>
-                <label className="block text-stone-600 mb-1 font-semibold">
-                  Upstream Provider Secret {editingProvider && '(Leave blank to keep existing encrypted secret)'}
-                </label>
+                <label className="block text-stone-600 mb-1 font-medium">API Key</label>
                 <input
                   type="password"
                   value={formData.apiKey}
                   onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                  placeholder={editingProvider ? 'Leave blank to retain current secret' : 'Paste upstream provider token...'}
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                 />
               </div>
 
               <div>
-                <label className="block text-stone-600 mb-1 font-semibold">
-                  Available Models (comma separated — auto-registered to Model Registry)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-stone-600 font-medium">Models</label>
+                  <button
+                    type="button"
+                    onClick={handleTestAndFetchModels}
+                    disabled={isDetectingModels}
+                    className="text-[11px] text-[#1c4d32] hover:text-[#143a24] font-medium flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3 h-3 ${isDetectingModels ? 'animate-spin' : ''}`} />
+                    <span>{isDetectingModels ? 'Detecting...' : 'Test & Fetch Models'}</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={formData.models}
                   onChange={(e) => setFormData({ ...formData, models: e.target.value })}
-                  placeholder="gemini-2.5-flash, gemini-2.5-pro"
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                 />
-              </div>
 
-              <div>
-                <label className="block text-stone-600 mb-1 font-semibold">Custom HTTP Headers (Optional JSON)</label>
-                <textarea
-                  rows={2}
-                  value={formData.customHeaders}
-                  onChange={(e) => setFormData({ ...formData, customHeaders: e.target.value })}
-                  placeholder='{ "HTTP-Referer": "https://example.com" }'
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
-                />
+                {/* Detected Models Feedback */}
+                {detectModelError && (
+                  <p className="text-[11px] text-rose-600 mt-1">{detectModelError}</p>
+                )}
+
+                {detectedModels && detectedModels.length > 0 && (
+                  <div className="mt-2 p-2.5 bg-[#eff6f2] border border-[#d6e5dc] rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-[#1c4d32]">
+                        Available ({detectedModels.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyDetectedModels(detectedModels)}
+                        className="text-[10px] font-semibold text-[#1c4d32] hover:underline cursor-pointer"
+                      >
+                        Use All
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pr-1">
+                      {detectedModels.map((m) => {
+                        const isSelected = formData.models
+                          .split(',')
+                          .map((s) => s.trim())
+                          .includes(m);
+                        return (
+                          <button
+                            type="button"
+                            key={m}
+                            onClick={() => handleToggleSingleModel(m)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition ${
+                              isSelected
+                                ? 'bg-[#1c4d32] text-white'
+                                : 'bg-white text-stone-700 hover:bg-[#e2f0e7] border border-[#d6e5dc]'
+                            }`}
+                            title={isSelected ? 'Click to remove' : 'Click to add'}
+                          >
+                            {m} {isSelected ? '✓' : '+'}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Timeout (ms)</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Timeout (ms)</label>
                   <input
                     type="number"
                     min="1000"
                     value={formData.timeoutMs}
                     onChange={(e) => setFormData({ ...formData, timeoutMs: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Priority (1 = high)</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Priority</label>
                   <input
                     type="number"
                     min="1"
                     max="10"
                     value={formData.priority}
                     onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Max Retries</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Retries</label>
                   <input
                     type="number"
                     min="0"
                     max="5"
                     value={formData.maxRetries}
                     onChange={(e) => setFormData({ ...formData, maxRetries: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
                   />
                 </div>
               </div>
@@ -709,24 +815,24 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
                   id="enabledCheck"
                   checked={formData.enabled}
                   onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                  className="rounded border-[#e4ded5] text-[#205e3b]"
+                  className="rounded border-[#e4ded5] text-[#205e3b] cursor-pointer"
                 />
-                <label htmlFor="enabledCheck" className="text-stone-700 font-medium">
-                  Enable provider in active routing pool
+                <label htmlFor="enabledCheck" className="text-stone-700 font-medium cursor-pointer">
+                  Enabled
                 </label>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#f0eae1]">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#f0eae1]">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-semibold transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-bold transition cursor-pointer shadow-xs"
+                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs"
                 >
                   Save Provider
                 </button>

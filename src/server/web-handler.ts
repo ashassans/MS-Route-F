@@ -331,7 +331,7 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
             providerId: id,
             providerName: provider.name,
             latencyMs: ping.latencyMs,
-            availableModels: provider.models,
+            availableModels: (ping.detectedModels && ping.detectedModels.length > 0) ? ping.detectedModels : provider.models,
             status: 'healthy',
             timestamp: new Date().toISOString(),
           });
@@ -349,6 +349,80 @@ export async function handleGatewayFetch(request: Request): Promise<Response> {
           db.saveProvider(provider);
 
           return jsonResponse({ success: false, error: err.message, latencyMs }, 400);
+        }
+      }
+
+      if (subPath === '/providers/test-models' && method === 'POST') {
+        const body = (await readJsonBody(request)) || {};
+        const { id, baseUrl, apiKey, protocol, type } = body;
+        let resolvedKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+        let providerToTest: ProviderConfig;
+
+        if (id && !resolvedKey) {
+          const existing = db.getProvider(id);
+          if (existing) {
+            providerToTest = {
+              ...existing,
+              baseUrl: baseUrl ? String(baseUrl).trim() : existing.baseUrl,
+              protocol: protocol || existing.protocol,
+              type: type || existing.type,
+            };
+          } else {
+            providerToTest = {
+              id: id || 'test',
+              name: 'Test Provider',
+              type: type || 'custom',
+              baseUrl: baseUrl ? String(baseUrl).trim() : '',
+              apiKey: '',
+              protocol: protocol || 'openai-chat',
+              models: [],
+              defaultModel: '',
+              timeoutMs: 15000,
+              priority: 1,
+              maxRetries: 1,
+              enabled: true,
+              health: { status: 'unknown', recentErrorsCount: 0 },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+          }
+        } else {
+          providerToTest = {
+            id: id || 'test',
+            name: 'Test Provider',
+            type: type || 'custom',
+            baseUrl: baseUrl ? String(baseUrl).trim() : '',
+            apiKey: resolvedKey ? encryptSecret(resolvedKey) : '',
+            protocol: protocol || 'openai-chat',
+            models: [],
+            defaultModel: '',
+            timeoutMs: 15000,
+            priority: 1,
+            maxRetries: 1,
+            enabled: true,
+            health: { status: 'unknown', recentErrorsCount: 0 },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+
+        const start = Date.now();
+        try {
+          const ping = await pingProviderConnection(providerToTest);
+          const models = ping.detectedModels && ping.detectedModels.length > 0
+            ? ping.detectedModels
+            : providerToTest.models;
+          return jsonResponse({
+            success: true,
+            latencyMs: ping.latencyMs,
+            models,
+          });
+        } catch (err: any) {
+          return jsonResponse({
+            success: false,
+            latencyMs: Date.now() - start,
+            error: err.message || 'Failed to connect to provider',
+          }, 400);
         }
       }
 

@@ -31,7 +31,11 @@ export function resolveProviderApiKey(provider: ProviderConfig): string {
 /**
  * Performs a real connectivity and authentication check against the upstream provider.
  */
-export async function pingProviderConnection(provider: ProviderConfig): Promise<{ latencyMs: number; modelsCount?: number }> {
+export async function pingProviderConnection(provider: ProviderConfig): Promise<{
+  latencyMs: number;
+  modelsCount?: number;
+  detectedModels?: string[];
+}> {
   const apiKey = resolveProviderApiKey(provider);
   const start = Date.now();
 
@@ -45,7 +49,7 @@ export async function pingProviderConnection(provider: ProviderConfig): Promise<
   try {
     if (provider.protocol === 'google-gemini' || provider.type === 'gemini') {
       const base = (provider.baseUrl || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-      const res = await fetch(`${base}/v1beta/models?pageSize=5&key=${encodeURIComponent(apiKey)}`, {
+      const res = await fetch(`${base}/v1beta/models?pageSize=50&key=${encodeURIComponent(apiKey)}`, {
         method: 'GET',
         signal: controller.signal,
       });
@@ -54,7 +58,14 @@ export async function pingProviderConnection(provider: ProviderConfig): Promise<
         throw new Error(`Gemini API (${res.status}): ${body.slice(0, 180)}`);
       }
       const data = await res.json();
-      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data.models) ? data.models.length : undefined };
+      const detectedModels: string[] = Array.isArray(data.models)
+        ? data.models.map((m: any) => (m.name || '').replace(/^models\//, '')).filter(Boolean)
+        : [];
+      return {
+        latencyMs: Date.now() - start,
+        modelsCount: detectedModels.length,
+        detectedModels,
+      };
     }
 
     if (provider.protocol === 'anthropic-messages' || provider.type === 'anthropic') {
@@ -74,7 +85,14 @@ export async function pingProviderConnection(provider: ProviderConfig): Promise<
         throw new Error(`Anthropic API (${res.status}): ${body.slice(0, 180)}`);
       }
       const data = await res.json();
-      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data.data) ? data.data.length : undefined };
+      const detectedModels: string[] = Array.isArray(data.data)
+        ? data.data.map((m: any) => m.id).filter(Boolean)
+        : [];
+      return {
+        latencyMs: Date.now() - start,
+        modelsCount: detectedModels.length,
+        detectedModels,
+      };
     }
 
     // OpenAI-compatible & Custom HTTP endpoints
@@ -95,7 +113,14 @@ export async function pingProviderConnection(provider: ProviderConfig): Promise<
 
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
-      return { latencyMs: Date.now() - start, modelsCount: Array.isArray(data?.data) ? data.data.length : undefined };
+      const detectedModels: string[] = Array.isArray(data?.data)
+        ? data.data.map((m: any) => m.id).filter(Boolean)
+        : [];
+      return {
+        latencyMs: Date.now() - start,
+        modelsCount: detectedModels.length,
+        detectedModels,
+      };
     }
 
     // Some custom OpenAI-compatible inference servers only expose POST /chat/completions
@@ -120,7 +145,11 @@ export async function pingProviderConnection(provider: ProviderConfig): Promise<
         signal: controller.signal,
       });
       if (probeRes.ok) {
-        return { latencyMs: Date.now() - start, modelsCount: provider.models.length || 1 };
+        return {
+          latencyMs: Date.now() - start,
+          modelsCount: provider.models.length || 1,
+          detectedModels: provider.models,
+        };
       }
       const probeBody = await probeRes.text();
       throw new Error(`${provider.name} (${probeRes.status}): ${probeBody.slice(0, 180)}`);

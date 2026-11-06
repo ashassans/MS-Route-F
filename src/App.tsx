@@ -10,7 +10,7 @@ import { ModelsView } from './components/views/ModelsView.tsx';
 import { RoutingView } from './components/views/RoutingView.tsx';
 import { ComboBuilderView } from './components/views/ComboBuilderView.tsx';
 import { ApiKeysView } from './components/views/ApiKeysView.tsx';
-import { ClaudeCodeView } from './components/views/ClaudeCodeView.tsx';
+import { MakeRequestView } from './components/views/MakeRequestView.tsx';
 import { PlaygroundView } from './components/views/PlaygroundView.tsx';
 import { AnalyticsView } from './components/views/AnalyticsView.tsx';
 import { RequestLogsView } from './components/views/RequestLogsView.tsx';
@@ -30,6 +30,7 @@ import type {
 
 export default function App() {
   const [currentView, setCurrentView] = useState<string>('overview');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [aliases, setAliases] = useState<ModelAlias[]>([]);
@@ -109,23 +110,6 @@ export default function App() {
     return () => unsub();
   }, [fetchAllData]);
 
-  const handleToggleKillSwitch = async (enabled: boolean) => {
-    try {
-      const res = await fetch('/api/emergency-kill-switch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
-      const data = await readApiJson(res, 'Emergency Kill Switch API');
-      if (!res.ok) throw new Error(data.error || 'Failed to update kill switch');
-      if (settings) {
-        setSettings({ ...settings, emergencyKillSwitch: data.emergencyKillSwitch });
-      }
-    } catch (err: any) {
-      setBannerError(`Failed to update kill switch: ${err.message}`);
-    }
-  };
-
   const activeProviderCount = providers.filter((p) => p.enabled).length;
   const activeKeyCount = apiKeys.filter((k) => !k.revoked).length;
   const degradedProviderCount = providers.filter(
@@ -139,20 +123,22 @@ export default function App() {
         onSelectView={setCurrentView}
         errorCount={degradedProviderCount}
         currentUser={currentUser}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-[#faf8f5]">
         <Header
           currentView={currentView}
           settings={settings}
-          onToggleKillSwitch={handleToggleKillSwitch}
           activeProviderCount={activeProviderCount}
           activeKeyCount={activeKeyCount}
           currentUser={currentUser}
+          onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         />
 
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
+          <div key={currentView} className="max-w-7xl mx-auto animate-fade-in">
             {bannerError && (
               <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between">
                 <span>{bannerError}</span>
@@ -222,8 +208,8 @@ export default function App() {
               />
             )}
 
-            {currentView === 'claudecode' && (
-              <ClaudeCodeView
+            {(currentView === 'request' || currentView === 'claudecode') && (
+              <MakeRequestView
                 apiKeys={apiKeys}
                 models={models}
                 combos={combos}
@@ -267,7 +253,6 @@ export default function App() {
                 settings={settings}
                 currentUser={currentUser}
                 onRefresh={fetchAllData}
-                onToggleKillSwitch={handleToggleKillSwitch}
               />
             )}
           </div>

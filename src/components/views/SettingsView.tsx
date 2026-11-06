@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Sliders,
-  ShieldAlert,
   Save,
   Download,
   Upload,
@@ -18,14 +17,12 @@ interface SettingsViewProps {
   settings: GatewaySettings | null;
   currentUser: User | null;
   onRefresh: () => void;
-  onToggleKillSwitch: (enable: boolean) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
   currentUser,
   onRefresh,
-  onToggleKillSwitch,
 }) => {
   const [formData, setFormData] = useState({
     globalDailyRequestLimit: settings?.globalDailyRequestLimit ?? 5000,
@@ -139,7 +136,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Gateway Infrastructure Settings
         </h2>
         <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-          Configure spending guardrails, emergency kill switch, timeout policies, and sanitized configuration backups.
+          Configure spending guardrails, timeout policies, retention days, and sanitized configuration backups.
         </p>
       </div>
 
@@ -152,126 +149,80 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* Emergency Kill Switch Section */}
-      <div
-        className={`border rounded-3xl p-6 transition shadow-xs ${
-          settings?.emergencyKillSwitch ? 'bg-rose-50 border-rose-300' : 'bg-white border-[#e8e2d8]'
-        }`}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div
-              className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
-                settings?.emergencyKillSwitch
-                  ? 'bg-rose-600 text-white'
-                  : 'bg-rose-50 text-rose-600 border border-rose-200'
-              }`}
-            >
-              <ShieldAlert className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-stone-900 flex items-center gap-2">
-                Emergency Gateway Kill Switch
-                {settings?.emergencyKillSwitch && (
-                  <span className="px-2 py-0.5 text-[10px] font-bold bg-rose-600 text-white rounded-full uppercase animate-pulse">
-                    Active
-                  </span>
-                )}
-              </h3>
-              <p className="text-xs text-stone-600 mt-0.5 max-w-xl leading-relaxed">
-                Immediately blocks all outgoing API requests to external AI providers. Incoming client requests return HTTP 503.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => onToggleKillSwitch(!settings?.emergencyKillSwitch)}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer shadow-xs shrink-0 ${
-              settings?.emergencyKillSwitch
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : 'bg-rose-600 hover:bg-rose-700 text-white'
-            }`}
-          >
-            {settings?.emergencyKillSwitch ? 'Deactivate Kill Switch & Resume' : 'Activate Emergency Kill Switch'}
-          </button>
-        </div>
-      </div>
-
       {/* Spending & Usage Limits Form */}
-      <div className="bg-white border border-[#e8e2d8] rounded-3xl p-6 shadow-xs">
-        <h3 className="font-bold text-sm text-stone-900 mb-1">Execution & Spending Guardrails</h3>
+      <div className="bg-white border border-[#e8e2d8] rounded-2xl p-5 shadow-xs">
+        <h3 className="font-semibold text-sm text-stone-900 mb-1">Execution & Spending Limits</h3>
         <p className="text-xs text-stone-500 mb-4">
-          Enforce request and monthly expenditure caps across all gateway endpoints.
+          Request and monthly expenditure limits
         </p>
 
-        <form onSubmit={handleSave} className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form onSubmit={handleSave} className="space-y-3.5 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-stone-600 mb-1 font-semibold">Daily Request Limit (Global)</label>
+              <label className="block text-stone-600 mb-1 font-medium">Daily Request Limit</label>
               <input
                 type="number"
                 min="10"
                 value={formData.globalDailyRequestLimit}
                 onChange={(e) => setFormData({ ...formData, globalDailyRequestLimit: Number(e.target.value) })}
-                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
               />
             </div>
 
             <div>
-              <label className="block text-stone-600 mb-1 font-semibold">Monthly Spending Limit ($ USD)</label>
+              <label className="block text-stone-600 mb-1 font-medium">Monthly Limit ($)</label>
               <input
                 type="number"
                 min="1"
                 value={formData.globalMonthlySpendingLimitUsd}
                 onChange={(e) => setFormData({ ...formData, globalMonthlySpendingLimitUsd: Number(e.target.value) })}
-                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
               />
             </div>
 
             <div>
-              <label className="block text-stone-600 mb-1 font-semibold">Global Request Timeout (ms)</label>
+              <label className="block text-stone-600 mb-1 font-medium">Timeout (ms)</label>
               <input
                 type="number"
                 min="5000"
                 max="120000"
                 value={formData.requestTimeoutMs}
                 onChange={(e) => setFormData({ ...formData, requestTimeoutMs: Number(e.target.value) })}
-                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
               />
             </div>
 
             <div>
-              <label className="block text-stone-600 mb-1 font-semibold">Max Failover Retries per Hop</label>
+              <label className="block text-stone-600 mb-1 font-medium">Max Retries</label>
               <input
                 type="number"
                 min="1"
                 max="5"
                 value={formData.maxRetries}
                 onChange={(e) => setFormData({ ...formData, maxRetries: Number(e.target.value) })}
-                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
               />
             </div>
 
             <div>
-              <label className="block text-stone-600 mb-1 font-semibold">Log Retention (Days)</label>
+              <label className="block text-stone-600 mb-1 font-medium">Log Retention (Days)</label>
               <input
                 type="number"
                 min="1"
                 max="365"
                 value={formData.retentionDays}
                 onChange={(e) => setFormData({ ...formData, retentionDays: Number(e.target.value) })}
-                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
               />
             </div>
 
             <div>
-              <label className="block text-stone-600 mb-1 font-semibold">Gateway Owner Email (Optional)</label>
+              <label className="block text-stone-600 mb-1 font-medium">Owner Email</label>
               <input
                 type="email"
                 value={formData.ownerEmail}
                 onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                placeholder="owner@yourdomain.com"
-                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
               />
             </div>
           </div>
@@ -357,7 +308,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </p>
             <textarea
               rows={3}
-              placeholder='Paste JSON here: { "models": [...], "aliases": [...], ... }'
               value={importJson}
               onChange={(e) => setImportJson(e.target.value)}
               className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl p-2.5 text-stone-800 font-mono text-xs focus:outline-none focus:border-[#205e3b]"

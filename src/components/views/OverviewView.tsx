@@ -233,7 +233,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
           <div className="mt-6 pt-4 border-t border-[#f0eae1] flex flex-wrap items-center justify-between gap-3 text-xs text-stone-500">
             <div>
-              <span>Claude Code Endpoint: </span>
+              <span>Messages Endpoint: </span>
               <code className="bg-[#f4efe8] text-stone-800 font-mono font-semibold px-2 py-0.5 rounded-md">/v1/messages</code>
             </div>
             <div>
@@ -253,12 +253,12 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
             <div className="space-y-2.5">
               <button
-                onClick={() => onNavigate('claudecode')}
+                onClick={() => onNavigate('request')}
                 className="w-full flex items-center justify-between px-4 py-3 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-semibold transition cursor-pointer shadow-2xs"
               >
                 <div className="flex items-center gap-2">
                   <Terminal className="w-4 h-4 text-[#143a24]" />
-                  <span>Run Claude Code 10-Point Suite</span>
+                  <span>Make a Request (cURL & SDKs)</span>
                 </div>
                 <ArrowRight className="w-4 h-4 text-[#143a24]" />
               </button>
@@ -383,7 +383,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="p-6 rounded-2xl border border-dashed border-[#e4ded5] bg-[#faf8f5] text-center space-y-2">
               <p className="text-xs font-semibold text-stone-700">No gateway requests recorded yet</p>
               <p className="text-[11px] text-stone-500">
-                Real-time telemetry traces from Claude Code, OpenAI SDK clients, and the API Playground appear here automatically.
+                Real-time telemetry traces from cURL, SDK clients, and the API Playground appear here automatically.
               </p>
             </div>
           ) : (

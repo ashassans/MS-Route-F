@@ -223,23 +223,23 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#eff6f2] border border-[#d6e5dc] rounded-2xl p-4 sm:p-5 shadow-xs">
         <div>
-          <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
+          <h2 className="font-editorial text-xl sm:text-2xl font-medium text-stone-900 flex items-center gap-2">
             <Boxes className="w-5 h-5 text-[#1c4d32]" />
-            Combo Routing Builder
+            Combo Builder
           </h2>
-          <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-            Combine multiple providers into resilient routing pipelines with sequential failover, parallel racing, or weighted load distribution.
+          <p className="text-xs text-stone-500 mt-0.5">
+            Failover, racing, and load-balanced provider pipelines
           </p>
         </div>
         <button
           onClick={handleOpenAdd}
-          className="px-4 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs shrink-0"
-          title={!canBuildCombo ? 'Add at least one AI provider first' : 'Build new combo'}
+          className="px-3.5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs shrink-0 self-start sm:self-auto"
+          title={!canBuildCombo ? 'Add a provider first' : 'Build combo'}
         >
           <Plus className="w-4 h-4" />
-          <span>{canBuildCombo ? 'Build New Combo' : 'Add Provider First'}</span>
+          <span>{canBuildCombo ? 'Build Combo' : 'Add Provider First'}</span>
         </button>
       </div>
 
@@ -438,10 +438,10 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
               <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">{formError}</div>
             )}
 
-            <form onSubmit={handleSave} className="space-y-4 text-xs">
+            <form onSubmit={handleSave} className="space-y-3.5 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Combo Name *</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Name</label>
                   <input
                     type="text"
                     required
@@ -454,13 +454,12 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                         id: customIdTouched ? prev.id : toComboModelSlug(nextName),
                       }));
                     }}
-                    placeholder="e.g. Smart Coding Failover"
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">
-                    Model ID (pass as "model" in API) *
+                  <label className="block text-stone-600 mb-1 font-medium">
+                    Model ID
                   </label>
                   <input
                     type="text"
@@ -471,41 +470,39 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                       setCustomIdTouched(true);
                       setFormData((prev) => ({ ...prev, id: e.target.value }));
                     }}
-                    placeholder="e.g. smart-coding or gpt-4o"
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Strategy *</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Strategy</label>
                   <select
                     value={formData.strategy}
                     onChange={(e) => setFormData({ ...formData, strategy: e.target.value as ComboStrategy })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b] font-semibold"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   >
-                    <option value="sequential">Sequential Failover (A → B → C)</option>
-                    <option value="parallel">Parallel Race (Fastest Response)</option>
-                    <option value="weighted">Weighted Load Balancing (%)</option>
+                    <option value="sequential">Sequential Failover</option>
+                    <option value="parallel">Parallel Race</option>
+                    <option value="weighted">Weighted Load Balancing</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Description</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Description</label>
                   <input
                     type="text"
-                    placeholder="Describe failover order or routing purpose..."
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2 pt-2">
+              <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="text-stone-800 font-bold block">
-                    Providers in Combo Chain ({formData.steps.length})
+                  <label className="text-stone-700 font-medium block">
+                    Steps ({formData.steps.length})
                   </label>
                   <div className="flex items-center gap-3">
                     {onNavigate && (
@@ -603,7 +600,6 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
                                 type="text"
                                 aria-label={`Model for step ${idx + 1}`}
                                 value={step.modelId}
-                                placeholder="e.g. gpt-4o or MiniMaxAI/MiniMax-M2.7"
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   setFormData((prev) => ({

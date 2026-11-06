@@ -84,14 +84,14 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#eff6f2] border border-[#d6e5dc] rounded-2xl p-4 sm:p-5 shadow-xs">
         <div>
-          <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
+          <h2 className="font-editorial text-xl sm:text-2xl font-medium text-stone-900 flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-[#1c4d32]" />
-            Gateway Client Authentication
+            API Keys
           </h2>
-          <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-            Issue authenticated gateway tokens for Claude Code, Cursor, Aider, or custom OpenAI SDK clients.
+          <p className="text-xs text-stone-500 mt-0.5">
+            Client authentication keys and rate limits
           </p>
         </div>
         <button
@@ -99,10 +99,10 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
             setErrorMsg(null);
             setIsCreateModalOpen(true);
           }}
-          className="px-4 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs shrink-0"
+          className="px-3.5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs shrink-0 self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>Generate Gateway Key</span>
+          <span>Generate Key</span>
         </button>
       </div>
 
@@ -222,39 +222,38 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
         <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-[#e8e2d8] rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#f0eae1] pb-3">
-              <h3 className="font-editorial text-xl font-medium text-stone-900">Generate Gateway Key</h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+              <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">Generate Key</h3>
+              <button onClick={() => setIsCreateModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer p-1">
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-4 text-xs">
+            <form onSubmit={handleCreate} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-stone-600 mb-1 font-semibold">Client Label *</label>
+                <label className="block text-stone-600 mb-1 font-medium">Name</label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Claude Code CLI, Workstation Cursor"
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                 />
               </div>
 
               <div>
-                <label className="block text-stone-600 mb-1 font-semibold">Rate Limit (requests per minute)</label>
+                <label className="block text-stone-600 mb-1 font-medium">Rate Limit (req/min)</label>
                 <input
                   type="number"
                   min="1"
                   max="5000"
                   value={rateLimitPerMinute}
                   onChange={(e) => setRateLimitPerMinute(Number(e.target.value))}
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                 />
               </div>
 
               <div>
-                <label className="block text-stone-600 mb-1.5 font-semibold">Endpoint Scopes</label>
+                <label className="block text-stone-600 mb-1 font-medium">Scopes</label>
                 <div className="flex flex-wrap gap-2">
                   {(['all', 'messages', 'completions', 'models'] as const).map((perm) => {
                     const active = permissions.includes(perm);

@@ -383,51 +383,50 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateRule} className="space-y-4 text-xs">
+            <form onSubmit={handleCreateRule} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-stone-600 mb-1 font-semibold">Rule Name *</label>
+                <label className="block text-stone-600 mb-1 font-medium">Name</label>
                 <input
                   type="text"
                   required
                   value={ruleForm.name}
                   onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                  placeholder="e.g. Route Code & Tool Calls"
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Task Category</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Category</label>
                   <select
                     value={ruleForm.taskType}
                     onChange={(e) => setRuleForm({ ...ruleForm, taskType: e.target.value as RoutingRule['taskType'] })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   >
                     <option value="coding">Coding & Tools</option>
                     <option value="reasoning">Deep Reasoning</option>
-                    <option value="vision">Vision & Multimodal</option>
-                    <option value="fast">Fast / Low Latency</option>
-                    <option value="default">Default Catch-All</option>
+                    <option value="vision">Vision</option>
+                    <option value="fast">Fast</option>
+                    <option value="default">Default</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Priority (1 = highest)</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Priority</label>
                   <input
                     type="number"
                     min="1"
                     max="20"
                     value={ruleForm.priority}
                     onChange={(e) => setRuleForm({ ...ruleForm, priority: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Target Type</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Type</label>
                   <select
                     value={ruleForm.targetType}
                     onChange={(e) => {
@@ -435,7 +434,7 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
                       const nextId = nextType === 'model' ? models[0]?.id || '' : combos[0]?.id || '';
                       setRuleForm({ ...ruleForm, targetType: nextType, targetId: nextId });
                     }}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   >
                     <option value="model">Model</option>
                     <option value="combo">Combo</option>
@@ -443,11 +442,11 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-stone-600 mb-1 font-semibold">Destination *</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Target</label>
                   <select
                     value={ruleForm.targetId}
                     onChange={(e) => setRuleForm({ ...ruleForm, targetId: e.target.value })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-3 py-2 text-stone-800 font-mono"
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                   >
                     {ruleForm.targetType === 'model'
                       ? models.map((m) => (

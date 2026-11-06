@@ -176,13 +176,13 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs">
-        <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
+      <div className="bg-[#eff6f2] border border-[#d6e5dc] rounded-2xl p-4 sm:p-5 shadow-xs">
+        <h2 className="font-editorial text-xl sm:text-2xl font-medium text-stone-900 flex items-center gap-2">
           <Play className="w-5 h-5 text-[#1c4d32]" />
-          Interactive API Sandbox
+          API Playground
         </h2>
-        <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-          Test live routing combos, model aliases, and SSE streaming with Anthropic Messages and OpenAI Chat Completions formats.
+        <p className="text-xs text-stone-500 mt-0.5">
+          Live testing for models, combos, and streaming
         </p>
       </div>
 
@@ -277,23 +277,21 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-stone-600 text-xs mb-1 font-semibold">System Prompt (Optional)</label>
+            <label className="block text-stone-600 text-xs mb-1 font-medium">System Prompt</label>
             <textarea
               rows={2}
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="Optional system instructions..."
               className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl p-2.5 text-stone-800 text-xs focus:outline-none focus:border-[#205e3b]"
             />
           </div>
 
           <div>
-            <label className="block text-stone-600 text-xs mb-1 font-semibold">User Message *</label>
+            <label className="block text-stone-600 text-xs mb-1 font-medium">Message</label>
             <textarea
               rows={4}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Type a message to send through your gateway..."
               className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl p-2.5 text-stone-800 text-xs focus:outline-none focus:border-[#205e3b]"
             />
           </div>
