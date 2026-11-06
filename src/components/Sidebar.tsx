@@ -12,7 +12,6 @@ import {
   FileText,
   HeartPulse,
   Sliders,
-  Sparkles,
   LogOut,
   LogIn,
 } from 'lucide-react';
@@ -103,8 +102,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Brand Header */}
         <div className="p-4 sm:p-5 border-b border-[#dbe7df] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#e2f0e7] border border-[#c5decb] flex items-center justify-center text-[#1c4d32] shadow-sm transition-transform hover:scale-105">
-              <Sparkles className="w-5 h-5 fill-[#2a7a4f]/20 text-[#1c4d32]" />
+            <div className="w-10 h-10 rounded-2xl overflow-hidden border border-[#c5decb] shadow-xs transition-transform hover:scale-105 bg-[#e2f0e7] flex items-center justify-center shrink-0">
+              <img
+                src="/logo.jpg"
+                alt="MSRoute Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
