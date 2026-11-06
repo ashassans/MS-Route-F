@@ -8,6 +8,7 @@
         "userId": { "type": "string", "description": "The Firebase Auth user ID" },
         "defaultFallbackEnabled": { "type": "boolean", "description": "Whether fallback failover is enabled" },
         "logRetentionDays": { "type": "number", "description": "Days to keep request traces" },
+        "configJson": { "type": "string", "description": "Serialized gateway configuration backup" },
         "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
       },
       "required": ["userId"]

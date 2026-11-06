@@ -7,10 +7,19 @@ import {
   CheckCircle2,
   Database,
   RotateCcw,
+  CloudUpload,
+  CloudDownload,
+  LogIn,
+  RefreshCw,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import type { GatewaySettings } from '../../types/gateway.ts';
 import { readApiJson } from '../../lib/api.ts';
+import {
+  saveGatewayConfigToCloud,
+  loadGatewayConfigFromCloud,
+  loginWithGoogle,
+} from '../../lib/firebase.ts';
 import firebaseConfig from '../../../firebase-applet-config.json';
 
 interface SettingsViewProps {
@@ -124,6 +133,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       onRefresh();
     } catch (err: any) {
       setErrorMsg(err.message);
+    }
+  };
+
+  const [cloudSyncing, setCloudSyncing] = useState(false);
+  const [cloudSyncSuccess, setCloudSyncSuccess] = useState<string | null>(null);
+  const [cloudRestoreSuccess, setCloudRestoreSuccess] = useState<string | null>(null);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+
+  const handleCloudBackup = async () => {
+    setCloudSyncing(true);
+    setCloudError(null);
+    setCloudSyncSuccess(null);
+    setCloudRestoreSuccess(null);
+    try {
+      if (!currentUser) {
+        const loginRes = await loginWithGoogle();
+        if (!loginRes.success) {
+          throw new Error(loginRes.error || 'Please sign in with Google to backup to Firestore');
+        }
+      }
+      const expRes = await fetch('/api/export-config');
+      if (!expRes.ok) throw new Error('Failed to export current configuration');
+      const configJson = await expRes.text();
+      const res = await saveGatewayConfigToCloud(configJson);
+      if (res.success) {
+        setCloudSyncSuccess(`Saved to Cloud Firestore at ${new Date(res.updatedAt || '').toLocaleTimeString()}`);
+        setTimeout(() => setCloudSyncSuccess(null), 6000);
+      } else {
+        throw new Error(res.error || 'Failed to save to Cloud Firestore');
+      }
+    } catch (err: any) {
+      setCloudError(err.message || 'Cloud backup failed');
+    } finally {
+      setCloudSyncing(false);
+    }
+  };
+
+  const handleCloudRestore = async () => {
+    setCloudSyncing(true);
+    setCloudError(null);
+    setCloudSyncSuccess(null);
+    setCloudRestoreSuccess(null);
+    try {
+      if (!currentUser) {
+        const loginRes = await loginWithGoogle();
+        if (!loginRes.success) {
+          throw new Error(loginRes.error || 'Please sign in with Google to restore from Firestore');
+        }
+      }
+      const res = await loadGatewayConfigFromCloud();
+      if (!res.success || !res.configJson) {
+        throw new Error(res.error || 'No cloud backup found for this account');
+      }
+      const importRes = await fetch('/api/import-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ configJson: res.configJson }),
+      });
+      const data = await readApiJson(importRes, 'Import Config API');
+      if (!importRes.ok || !data.success) throw new Error('Invalid cloud configuration');
+      setCloudRestoreSuccess(`Restored configuration saved on ${new Date(res.updatedAt || '').toLocaleString()}`);
+      setTimeout(() => setCloudRestoreSuccess(null), 6000);
+      onRefresh();
+    } catch (err: any) {
+      setCloudError(err.message || 'Cloud restore failed');
+    } finally {
+      setCloudSyncing(false);
     }
   };
 
@@ -332,20 +408,109 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* Firebase Cloud Connection Card */}
-      <div className="bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs">
-        <div className="flex items-center gap-2 mb-1">
-          <Database className="w-5 h-5 text-[#1c4d32]" />
-          <h4 className="text-sm font-bold text-stone-900">Firebase Cloud Integration</h4>
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd]">
-            Configured
-          </span>
-        </div>
-        <p className="text-xs text-stone-600">
-          Connected to Firebase Project <code className="text-[#1c4d32] font-mono font-bold">{firebaseConfig.projectId}</code> for Cloud Firestore persistence & Google Authentication.
-        </p>
+      {/* Firebase Cloud Connection & Cloud Sync Card */}
+      <div className="bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Database className="w-5 h-5 text-[#1c4d32]" />
+              <h4 className="text-sm font-bold text-stone-900">Firebase Cloud Integration & Sync</h4>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd]">
+                Connected
+              </span>
+            </div>
+            <p className="text-xs text-stone-600">
+              Connected to Firebase Project <code className="text-[#1c4d32] font-mono font-bold">{firebaseConfig.projectId}</code> for persistent Cloud Firestore storage and Google Authentication.
+            </p>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 text-xs font-mono">
+          {currentUser ? (
+            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-2xl border border-[#d2e2d7] shadow-2xs self-start sm:self-auto">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="text-left">
+                <p className="text-[11px] font-semibold text-stone-900 leading-tight">
+                  {currentUser.displayName || 'Google Account'}
+                </p>
+                <p className="text-[10px] text-stone-500 truncate max-w-[160px] leading-tight">
+                  {currentUser.email}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => loginWithGoogle()}
+              className="px-3 py-1.5 bg-white hover:bg-stone-50 text-stone-700 border border-[#d2e2d7] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs self-start sm:self-auto"
+            >
+              <LogIn className="w-3.5 h-3.5 text-stone-500" />
+              <span>Sign in with Google</span>
+            </button>
+          )}
+        </div>
+
+        {/* Cloud Sync Actions */}
+        <div className="bg-white p-4 rounded-2xl border border-[#e4ded5] space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h5 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                <CloudUpload className="w-4 h-4 text-[#1c4d32]" />
+                Cloud Firestore Config Snapshot
+              </h5>
+              <p className="text-[11px] text-stone-500 mt-0.5">
+                Save your custom Combos, Routing Rules, and Settings to your Firestore cloud profile so you can restore them anytime.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleCloudBackup}
+                disabled={cloudSyncing}
+                className="px-3.5 py-2 bg-[#1c4d32] hover:bg-[#153a26] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-50"
+              >
+                {cloudSyncing ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CloudUpload className="w-3.5 h-3.5" />
+                )}
+                <span>{cloudSyncing ? 'Syncing...' : 'Backup to Cloud'}</span>
+              </button>
+
+              <button
+                onClick={handleCloudRestore}
+                disabled={cloudSyncing}
+                className="px-3.5 py-2 bg-[#f0f7f2] hover:bg-[#e2f0e6] text-[#1c4d32] border border-[#cbe1d3] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              >
+                <CloudDownload className="w-3.5 h-3.5" />
+                <span>Restore from Cloud</span>
+              </button>
+            </div>
+          </div>
+
+          {cloudSyncSuccess && (
+            <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{cloudSyncSuccess}</span>
+            </div>
+          )}
+
+          {cloudRestoreSuccess && (
+            <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{cloudRestoreSuccess}</span>
+            </div>
+          )}
+
+          {cloudError && (
+            <div className="px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
+              <span>{cloudError}</span>
+              <button onClick={() => setCloudError(null)} className="font-semibold underline ml-2 cursor-pointer">
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Project Metadata */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
           <div className="bg-white p-3.5 rounded-2xl border border-[#e4ded5]">
             <span className="text-[10px] text-stone-500 uppercase tracking-wider block font-sans font-semibold">Project ID</span>
             <span className="text-stone-900 font-semibold">{firebaseConfig.projectId}</span>
@@ -355,8 +520,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span className="text-stone-700 truncate block">{firebaseConfig.authDomain}</span>
           </div>
           <div className="bg-white p-3.5 rounded-2xl border border-[#e4ded5]">
-            <span className="text-[10px] text-stone-500 uppercase tracking-wider block font-sans font-semibold">Storage Bucket</span>
-            <span className="text-stone-700 truncate block">{firebaseConfig.storageBucket}</span>
+            <span className="text-[10px] text-stone-500 uppercase tracking-wider block font-sans font-semibold">Database Edition</span>
+            <span className="text-stone-700 truncate block">Firestore (default)</span>
           </div>
         </div>
       </div>

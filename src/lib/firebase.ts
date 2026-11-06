@@ -5,7 +5,7 @@
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, setDoc, getDoc } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -104,3 +104,41 @@ export async function loginWithGoogle(): Promise<AuthResult> {
 export async function logoutUser() {
   return signOut(auth);
 }
+
+export async function saveGatewayConfigToCloud(configJson: string): Promise<{ success: boolean; updatedAt?: string; error?: string }> {
+  if (!auth.currentUser) {
+    return { success: false, error: 'User is not signed in with Google' };
+  }
+  const uid = auth.currentUser.uid;
+  const path = `users/${uid}/settings/gateway_config`;
+  try {
+    const updatedAt = new Date().toISOString();
+    await setDoc(doc(db, 'users', uid, 'settings', 'gateway_config'), {
+      userId: uid,
+      configJson,
+      updatedAt,
+    });
+    return { success: true, updatedAt };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function loadGatewayConfigFromCloud(): Promise<{ success: boolean; configJson?: string; updatedAt?: string; error?: string }> {
+  if (!auth.currentUser) {
+    return { success: false, error: 'User is not signed in with Google' };
+  }
+  const uid = auth.currentUser.uid;
+  const path = `users/${uid}/settings/gateway_config`;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'settings', 'gateway_config'));
+    if (!snap.exists()) {
+      return { success: false, error: 'No cloud backup found for this account' };
+    }
+    const data = snap.data();
+    return { success: true, configJson: data?.configJson, updatedAt: data?.updatedAt };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
