@@ -220,42 +220,50 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
 
       {/* Trace Inspection Modal */}
       {selectedLog && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e8e2d8] rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#f0eae1] pb-3">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+          <div className="relative w-full max-w-xl my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
               <div>
-                <h3 className="font-editorial text-xl font-medium text-stone-900">Request Telemetry Trace</h3>
+                <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">Request Telemetry Trace</h3>
                 <p className="text-xs font-mono text-stone-500 mt-0.5">ID: {selectedLog.id}</p>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedLog(null)}
-                className="text-stone-400 hover:text-stone-700 cursor-pointer"
+                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1.5 rounded-lg hover:bg-stone-100 transition"
+                aria-label="Close"
               >
                 ✕
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#e8e2d8]">
-                <span className="text-stone-500 block font-medium">Protocol & Client</span>
-                <span className="font-mono font-bold text-stone-800">
-                  {selectedLog.endpoint} ({selectedLog.clientType})
-                </span>
+            {/* Scrollable Body */}
+            <div className="overflow-y-auto px-5 sm:px-6 py-4 space-y-4 text-xs flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#e8e2d8]">
+                  <span className="text-stone-500 block font-medium">Protocol & Client</span>
+                  <span className="font-mono font-bold text-stone-800">
+                    {selectedLog.endpoint} ({selectedLog.clientType})
+                  </span>
+                </div>
+                <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#e8e2d8]">
+                  <span className="text-stone-500 block font-medium">Estimated Cost</span>
+                  <span className="font-mono font-bold text-[#a16207]">${selectedLog.estimatedCostUsd.toFixed(5)}</span>
+                </div>
               </div>
-              <div className="bg-[#faf8f5] p-3 rounded-2xl border border-[#e8e2d8]">
-                <span className="text-stone-500 block font-medium">Estimated Cost</span>
-                <span className="font-mono font-bold text-[#a16207]">${selectedLog.estimatedCostUsd.toFixed(5)}</span>
-              </div>
+
+              <pre className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-4 text-xs font-mono text-stone-800 max-h-72 overflow-y-auto leading-relaxed">
+                {JSON.stringify(selectedLog, null, 2)}
+              </pre>
             </div>
 
-            <pre className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-4 text-xs font-mono text-stone-800 max-h-60 overflow-y-auto leading-relaxed">
-              {JSON.stringify(selectedLog, null, 2)}
-            </pre>
-
-            <div className="flex justify-end pt-2">
+            {/* Fixed Footer */}
+            <div className="flex items-center justify-end px-5 sm:px-6 py-3.5 border-t border-[#f0eae1] bg-[#faf8f5] shrink-0">
               <button
+                type="button"
                 onClick={() => setSelectedLog(null)}
-                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs font-semibold cursor-pointer"
+                className="px-4 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-[#e4ded5] rounded-xl text-xs font-semibold cursor-pointer transition"
               >
                 Close Trace
               </button>

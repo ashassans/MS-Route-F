@@ -510,20 +510,24 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
       {/* Add Model Modal */}
       {isModelModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e8e2d8] rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl space-y-3.5">
-            <div className="flex items-center justify-between border-b border-[#f0eae1] pb-2.5">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+          <div className="relative w-full max-w-lg my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
+            <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
               <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">Add Model</h3>
-              <button onClick={() => setIsModelModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer p-1">
+              <button
+                type="button"
+                onClick={() => setIsModelModalOpen(false)}
+                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1.5 rounded-lg hover:bg-stone-100 transition"
+              >
                 ✕
               </button>
             </div>
 
-            {formError && (
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">{formError}</div>
-            )}
-
-            <form onSubmit={handleCreateModel} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateModel} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="overflow-y-auto px-5 sm:px-6 py-4 space-y-3 text-xs flex-1">
+                {formError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">{formError}</div>
+                )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-stone-600 mb-1 font-medium">Model ID</label>
@@ -647,17 +651,20 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
                 </label>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f0eae1]">
+              </div>
+
+              {/* Fixed Footer */}
+              <div className="flex items-center justify-end gap-2.5 px-5 sm:px-6 py-3.5 border-t border-[#f0eae1] bg-[#faf8f5] shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsModelModalOpen(false)}
-                  className="px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-[#e4ded5] rounded-xl font-medium transition cursor-pointer text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs"
+                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs text-xs"
                 >
                   Save Model
                 </button>
@@ -669,20 +676,24 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
       {/* Create Alias Modal */}
       {isAliasModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e8e2d8] rounded-2xl w-full max-w-md p-5 sm:p-6 shadow-xl space-y-3.5">
-            <div className="flex items-center justify-between border-b border-[#f0eae1] pb-2.5">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+          <div className="relative w-full max-w-md my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
+            <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
               <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">Add Alias</h3>
-              <button onClick={() => setIsAliasModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer p-1">
+              <button
+                type="button"
+                onClick={() => setIsAliasModalOpen(false)}
+                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1.5 rounded-lg hover:bg-stone-100 transition"
+              >
                 ✕
               </button>
             </div>
 
-            {formError && (
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">{formError}</div>
-            )}
-
-            <form onSubmit={handleCreateAlias} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateAlias} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 text-xs flex-1">
+                {formError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">{formError}</div>
+                )}
               <div>
                 <label className="block text-stone-600 mb-1 font-medium">Alias</label>
                 <input
@@ -750,18 +761,21 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f0eae1]">
+              </div>
+
+              {/* Fixed Footer */}
+              <div className="flex items-center justify-end gap-2.5 px-5 sm:px-6 py-3.5 border-t border-[#f0eae1] bg-[#faf8f5] shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAliasModalOpen(false)}
-                  className="px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-[#e4ded5] rounded-xl font-medium transition cursor-pointer text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!aliasForm.targetId}
-                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs disabled:opacity-50 text-xs"
                 >
                   Save Alias
                 </button>

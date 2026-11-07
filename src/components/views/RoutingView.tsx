@@ -374,107 +374,117 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
 
       {/* Add Rule Modal */}
       {isRuleModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e8e2d8] rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#f0eae1] pb-3">
-              <h3 className="font-editorial text-xl font-medium text-stone-900">Create Task Routing Rule</h3>
-              <button onClick={() => setIsRuleModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+          <div className="relative w-full max-w-md my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
+              <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">Create Task Routing Rule</h3>
+              <button
+                type="button"
+                onClick={() => setIsRuleModalOpen(false)}
+                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1.5 rounded-lg hover:bg-stone-100 transition"
+                aria-label="Close"
+              >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateRule} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-stone-600 mb-1 font-medium">Name</label>
-                <input
-                  type="text"
-                  required
-                  value={ruleForm.name}
-                  onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleCreateRule} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 text-xs flex-1">
                 <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Category</label>
-                  <select
-                    value={ruleForm.taskType}
-                    onChange={(e) => setRuleForm({ ...ruleForm, taskType: e.target.value as RoutingRule['taskType'] })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
-                  >
-                    <option value="coding">Coding & Tools</option>
-                    <option value="reasoning">Deep Reasoning</option>
-                    <option value="vision">Vision</option>
-                    <option value="fast">Fast</option>
-                    <option value="default">Default</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Priority</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Name</label>
                   <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={ruleForm.priority}
-                    onChange={(e) => setRuleForm({ ...ruleForm, priority: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    type="text"
+                    required
+                    value={ruleForm.name}
+                    onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Type</label>
-                  <select
-                    value={ruleForm.targetType}
-                    onChange={(e) => {
-                      const nextType = e.target.value as 'model' | 'combo';
-                      const nextId = nextType === 'model' ? models[0]?.id || '' : combos[0]?.id || '';
-                      setRuleForm({ ...ruleForm, targetType: nextType, targetId: nextId });
-                    }}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
-                  >
-                    <option value="model">Model</option>
-                    <option value="combo">Combo</option>
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Category</label>
+                    <select
+                      value={ruleForm.taskType}
+                      onChange={(e) => setRuleForm({ ...ruleForm, taskType: e.target.value as RoutingRule['taskType'] })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    >
+                      <option value="coding">Coding & Tools</option>
+                      <option value="reasoning">Deep Reasoning</option>
+                      <option value="vision">Vision</option>
+                      <option value="fast">Fast</option>
+                      <option value="default">Default</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Priority</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={ruleForm.priority}
+                      onChange={(e) => setRuleForm({ ...ruleForm, priority: Number(e.target.value) })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Target</label>
-                  <select
-                    value={ruleForm.targetId}
-                    onChange={(e) => setRuleForm({ ...ruleForm, targetId: e.target.value })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
-                  >
-                    {ruleForm.targetType === 'model'
-                      ? models.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.displayName}
-                          </option>
-                        ))
-                      : combos.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Type</label>
+                    <select
+                      value={ruleForm.targetType}
+                      onChange={(e) => {
+                        const nextType = e.target.value as 'model' | 'combo';
+                        const nextId = nextType === 'model' ? models[0]?.id || '' : combos[0]?.id || '';
+                        setRuleForm({ ...ruleForm, targetType: nextType, targetId: nextId });
+                      }}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    >
+                      <option value="model">Model</option>
+                      <option value="combo">Combo</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Target</label>
+                    <select
+                      value={ruleForm.targetId}
+                      onChange={(e) => setRuleForm({ ...ruleForm, targetId: e.target.value })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
+                    >
+                      {ruleForm.targetType === 'model'
+                        ? models.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.displayName}
+                            </option>
+                          ))
+                        : combos.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f0eae1]">
+              {/* Fixed Footer */}
+              <div className="flex items-center justify-end gap-2.5 px-5 sm:px-6 py-3.5 border-t border-[#f0eae1] bg-[#faf8f5] shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsRuleModalOpen(false)}
-                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-semibold cursor-pointer"
+                  className="px-3.5 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-[#e4ded5] rounded-xl font-medium transition cursor-pointer text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!ruleForm.targetId}
-                  className="px-5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs disabled:opacity-50 text-xs"
                 >
                   Save Rule
                 </button>

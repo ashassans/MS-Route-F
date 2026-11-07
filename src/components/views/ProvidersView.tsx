@@ -604,235 +604,243 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, onRefre
 
       {/* Edit / Add Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border border-[#e8e2d8] rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-xl space-y-4 my-8">
-            <div className="flex items-center justify-between border-b border-[#f0eae1] pb-3">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+          <div className="relative w-full max-w-lg my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
+            {/* Fixed Header */}
+            <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
               <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">
                 {editingProvider ? `Edit ${editingProvider.name}` : 'Add Provider'}
               </h3>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1"
+                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1.5 rounded-lg hover:bg-stone-100 transition"
+                aria-label="Close"
               >
                 ✕
               </button>
             </div>
 
-            {formError && (
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleSave} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Preset</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => handleSelectType(e.target.value as ProviderType)}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
-                  >
-                    <option value="gemini">Google Gemini</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="deepseek">DeepSeek</option>
-                    <option value="groq">Groq</option>
-                    <option value="openrouter">OpenRouter</option>
-                    <option value="mistral">Mistral</option>
-                    <option value="xai">xAI</option>
-                    <option value="together">Together AI</option>
-                    <option value="cohere">Cohere</option>
-                    <option value="fireworks">Fireworks AI</option>
-                    <option value="custom">Custom Endpoint</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Protocol</label>
-                  <select
-                    value={formData.protocol}
-                    onChange={(e) => setFormData({ ...formData, protocol: e.target.value as ApiProtocol })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b] font-mono text-[11px]"
-                  >
-                    <option value="openai-chat">OpenAI Chat API</option>
-                    <option value="anthropic-messages">Anthropic Messages API</option>
-                    <option value="google-gemini">Google Gemini REST</option>
-                    <option value="openai-responses">OpenAI Responses API</option>
-                    <option value="custom-http">Custom HTTP</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-stone-600 mb-1 font-medium">ID</label>
-                  <input
-                    type="text"
-                    required
-                    disabled={Boolean(editingProvider)}
-                    value={formData.id}
-                    onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono disabled:opacity-50"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-stone-600 mb-1 font-medium">Base URL</label>
-                <input
-                  type="url"
-                  required
-                  value={formData.baseUrl}
-                  onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-stone-600 mb-1 font-medium">API Key</label>
-                <input
-                  type="password"
-                  value={formData.apiKey}
-                  onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-stone-600 font-medium">Models</label>
-                  <button
-                    type="button"
-                    onClick={handleTestAndFetchModels}
-                    disabled={isDetectingModels}
-                    className="text-[11px] text-[#1c4d32] hover:text-[#143a24] font-medium flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                  >
-                    <Sparkles className={`w-3 h-3 ${isDetectingModels ? 'animate-spin' : ''}`} />
-                    <span>{isDetectingModels ? 'Detecting...' : 'Test & Fetch Models'}</span>
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  value={formData.models}
-                  onChange={(e) => setFormData({ ...formData, models: e.target.value })}
-                  className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
-                />
-
-                {/* Detected Models Feedback */}
-                {detectModelError && (
-                  <p className="text-[11px] text-rose-600 mt-1">{detectModelError}</p>
-                )}
-
-                {detectedModels && detectedModels.length > 0 && (
-                  <div className="mt-2 p-2.5 bg-[#eff6f2] border border-[#d6e5dc] rounded-xl space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-medium text-[#1c4d32]">
-                        Available ({detectedModels.length})
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleApplyDetectedModels(detectedModels)}
-                        className="text-[10px] font-semibold text-[#1c4d32] hover:underline cursor-pointer"
-                      >
-                        Use All
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pr-1">
-                      {detectedModels.map((m) => {
-                        const isSelected = formData.models
-                          .split(',')
-                          .map((s) => s.trim())
-                          .includes(m);
-                        return (
-                          <button
-                            type="button"
-                            key={m}
-                            onClick={() => handleToggleSingleModel(m)}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition ${
-                              isSelected
-                                ? 'bg-[#1c4d32] text-white'
-                                : 'bg-white text-stone-700 hover:bg-[#e2f0e7] border border-[#d6e5dc]'
-                            }`}
-                            title={isSelected ? 'Click to remove' : 'Click to add'}
-                          >
-                            {m} {isSelected ? '✓' : '+'}
-                          </button>
-                        );
-                      })}
-                    </div>
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleSave} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 text-xs flex-1">
+                {formError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+                    {formError}
                   </div>
                 )}
-              </div>
 
-              <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Preset</label>
+                    <select
+                      value={formData.type}
+                      onChange={(e) => handleSelectType(e.target.value as ProviderType)}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    >
+                      <option value="gemini">Google Gemini</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="deepseek">DeepSeek</option>
+                      <option value="groq">Groq</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="mistral">Mistral</option>
+                      <option value="xai">xAI</option>
+                      <option value="together">Together AI</option>
+                      <option value="cohere">Cohere</option>
+                      <option value="fireworks">Fireworks AI</option>
+                      <option value="custom">Custom Endpoint</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Protocol</label>
+                    <select
+                      value={formData.protocol}
+                      onChange={(e) => setFormData({ ...formData, protocol: e.target.value as ApiProtocol })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b] font-mono text-[11px]"
+                    >
+                      <option value="openai-chat">OpenAI Chat API</option>
+                      <option value="anthropic-messages">Anthropic Messages API</option>
+                      <option value="google-gemini">Google Gemini REST</option>
+                      <option value="openai-responses">OpenAI Responses API</option>
+                      <option value="custom-http">Custom HTTP</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 focus:outline-none focus:border-[#205e3b]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">ID</label>
+                    <input
+                      type="text"
+                      required
+                      disabled={Boolean(editingProvider)}
+                      value={formData.id}
+                      onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Timeout (ms)</label>
+                  <label className="block text-stone-600 mb-1 font-medium">Base URL</label>
                   <input
-                    type="number"
-                    min="1000"
-                    value={formData.timeoutMs}
-                    onChange={(e) => setFormData({ ...formData, timeoutMs: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    type="url"
+                    required
+                    value={formData.baseUrl}
+                    onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Priority</label>
+                  <label className="block text-stone-600 mb-1 font-medium">API Key</label>
                   <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    type="password"
+                    value={formData.apiKey}
+                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                    placeholder={editingProvider?.hasApiKey ? '•••••••••••• (Leave blank to keep existing)' : 'Enter API Key (optional)'}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-stone-600 mb-1 font-medium">Retries</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-stone-600 font-medium">Models</label>
+                    <button
+                      type="button"
+                      onClick={handleTestAndFetchModels}
+                      disabled={isDetectingModels}
+                      className="text-[11px] text-[#1c4d32] hover:text-[#143a24] font-medium flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <Sparkles className={`w-3 h-3 ${isDetectingModels ? 'animate-spin' : ''}`} />
+                      <span>{isDetectingModels ? 'Detecting...' : 'Test & Fetch Models'}</span>
+                    </button>
+                  </div>
                   <input
-                    type="number"
-                    min="0"
-                    max="5"
-                    value={formData.maxRetries}
-                    onChange={(e) => setFormData({ ...formData, maxRetries: Number(e.target.value) })}
-                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    type="text"
+                    value={formData.models}
+                    onChange={(e) => setFormData({ ...formData, models: e.target.value })}
+                    className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono focus:outline-none focus:border-[#205e3b]"
                   />
+
+                  {/* Detected Models Feedback */}
+                  {detectModelError && (
+                    <p className="text-[11px] text-rose-600 mt-1">{detectModelError}</p>
+                  )}
+
+                  {detectedModels && detectedModels.length > 0 && (
+                    <div className="mt-2 p-2.5 bg-[#eff6f2] border border-[#d6e5dc] rounded-xl space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-[#1c4d32]">
+                          Available ({detectedModels.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleApplyDetectedModels(detectedModels)}
+                          className="text-[10px] font-semibold text-[#1c4d32] hover:underline cursor-pointer"
+                        >
+                          Use All
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pr-1">
+                        {detectedModels.map((m) => {
+                          const isSelected = formData.models
+                            .split(',')
+                            .map((s) => s.trim())
+                            .includes(m);
+                          return (
+                            <button
+                              type="button"
+                              key={m}
+                              onClick={() => handleToggleSingleModel(m)}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono cursor-pointer transition ${
+                                isSelected
+                                  ? 'bg-[#1c4d32] text-white'
+                                  : 'bg-white text-stone-700 hover:bg-[#e2f0e7] border border-[#d6e5dc]'
+                              }`}
+                              title={isSelected ? 'Click to remove' : 'Click to add'}
+                            >
+                              {m} {isSelected ? '✓' : '+'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Timeout (ms)</label>
+                    <input
+                      type="number"
+                      min="1000"
+                      value={formData.timeoutMs}
+                      onChange={(e) => setFormData({ ...formData, timeoutMs: Number(e.target.value) })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Priority</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={formData.priority}
+                      onChange={(e) => setFormData({ ...formData, priority: Number(e.target.value) })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-stone-600 mb-1 font-medium">Retries</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="5"
+                      value={formData.maxRetries}
+                      onChange={(e) => setFormData({ ...formData, maxRetries: Number(e.target.value) })}
+                      className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl px-2.5 py-1.5 text-stone-800 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="enabledCheck"
+                    checked={formData.enabled}
+                    onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
+                    className="rounded border-[#e4ded5] text-[#205e3b] cursor-pointer"
+                  />
+                  <label htmlFor="enabledCheck" className="text-stone-700 font-medium cursor-pointer">
+                    Enabled
+                  </label>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="enabledCheck"
-                  checked={formData.enabled}
-                  onChange={(e) => setFormData({ ...formData, enabled: e.target.checked })}
-                  className="rounded border-[#e4ded5] text-[#205e3b] cursor-pointer"
-                />
-                <label htmlFor="enabledCheck" className="text-stone-700 font-medium cursor-pointer">
-                  Enabled
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#f0eae1]">
+              {/* Fixed Footer */}
+              <div className="flex items-center justify-end gap-2.5 px-5 sm:px-6 py-3.5 border-t border-[#f0eae1] bg-[#faf8f5] shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-[#e4ded5] rounded-xl font-medium transition cursor-pointer text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs"
+                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs text-xs"
                 >
                   Save Provider
                 </button>

@@ -219,16 +219,21 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
 
       {/* Create Key Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e8e2d8] rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#f0eae1] pb-3">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+          <div className="relative w-full max-w-md my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
+            <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
               <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">Generate Key</h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-stone-400 hover:text-stone-700 cursor-pointer p-1">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="text-stone-400 hover:text-stone-700 text-sm cursor-pointer p-1.5 rounded-lg hover:bg-stone-100 transition"
+              >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-3.5 text-xs">
+            <form onSubmit={handleCreate} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 text-xs flex-1">
               <div>
                 <label className="block text-stone-600 mb-1 font-medium">Name</label>
                 <input
@@ -275,17 +280,20 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f0eae1]">
+              </div>
+
+              {/* Fixed Footer */}
+              <div className="flex items-center justify-end gap-2.5 px-5 sm:px-6 py-3.5 border-t border-[#f0eae1] bg-[#faf8f5] shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-semibold transition cursor-pointer"
+                  className="px-3.5 py-1.5 bg-white hover:bg-stone-100 text-stone-700 border border-[#e4ded5] rounded-xl font-medium transition cursor-pointer text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-bold transition cursor-pointer shadow-xs"
+                  className="px-4 py-1.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl font-semibold transition cursor-pointer shadow-xs text-xs"
                 >
                   Create Key
                 </button>
@@ -297,8 +305,8 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
 
       {/* Reveal Key Modal */}
       {createdKeyData && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-[#e8e2d8] rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+          <div className="relative w-full max-w-lg my-auto bg-white border border-[#e8e2d8] rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto animate-fade-in">
             <div className="flex items-center gap-2">
               <KeyRound className="w-5 h-5 text-amber-600" />
               <h3 className="font-editorial text-xl font-medium text-stone-900">Your New MSRoute Gateway Key</h3>
