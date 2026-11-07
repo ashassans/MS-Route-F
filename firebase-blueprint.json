@@ -2,7 +2,7 @@
   "entities": {
     "UserSettings": {
       "title": "UserSettings",
-      "description": "User preferences and security settings for NexusGate AI",
+      "description": "User preferences and security settings for MSRoute AI",
       "type": "object",
       "properties": {
         "userId": { "type": "string", "description": "The Firebase Auth user ID" },

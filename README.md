@@ -1,6 +1,6 @@
-# NexusGate AI — Unified Cloud AI Gateway
+# MSRoute — Personal AI Cloud Gateway
 
-NexusGate AI is a production-grade, cloud-hosted Unified AI Gateway and personal LLM routing infrastructure inspired by OmniRoute. It connects multiple AI providers (Anthropic, Google Gemini, OpenAI, DeepSeek, Groq, OpenRouter, Mistral, xAI, and custom HTTP endpoints), combines them into failover and load-balanced routing groups, and exposes unified APIs natively compatible with **Claude Code** and standard OpenAI clients.
+MSRoute is a production-grade, cloud-hosted Unified AI Gateway and personal LLM routing infrastructure inspired by OmniRoute. It connects multiple AI providers (Anthropic, Google Gemini, OpenAI, DeepSeek, Groq, OpenRouter, Mistral, xAI, and custom HTTP endpoints), combines them into failover and load-balanced routing groups, and exposes unified APIs natively compatible with **Claude Code** and standard OpenAI clients.
 
 ---
 
@@ -48,10 +48,10 @@ NexusGate AI is a production-grade, cloud-hosted Unified AI Gateway and personal
 
 ## ⚡ Quick Start: Claude Code Configuration
 
-To point Claude Code to your NexusGate AI Gateway, set the following environment variables in your terminal:
+To point Claude Code to your MSRoute Gateway, set the following environment variables in your terminal:
 
 ```bash
-# Point Claude Code to NexusGate
+# Point Claude Code to MSRoute
 export ANTHROPIC_BASE_URL="http://localhost:3000"
 export ANTHROPIC_AUTH_TOKEN="gw-live-master-key-prod-001"
 
