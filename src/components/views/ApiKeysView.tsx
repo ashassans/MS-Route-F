@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   KeyRound,
   Plus,
@@ -218,8 +219,8 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
       </div>
 
       {/* Create Key Modal */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+      {isCreateModalOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-screen items-center justify-center">
           <div className="relative w-full max-w-md my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
             <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
               <h3 className="font-editorial text-lg sm:text-xl font-medium text-stone-900">Generate Key</h3>
@@ -300,12 +301,13 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Reveal Key Modal */}
-      {createdKeyData && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+      {createdKeyData && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-screen items-center justify-center">
           <div className="relative w-full max-w-lg my-auto bg-white border border-[#e8e2d8] rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto animate-fade-in">
             <div className="flex items-center gap-2">
               <KeyRound className="w-5 h-5 text-amber-600" />
@@ -336,7 +338,8 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

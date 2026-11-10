@@ -8,6 +8,7 @@ import { executeWithFallback } from '../engine/fallback.ts';
 import { parseAnthropicRequest, parseOpenAiRequest } from '../adapters/protocol-converter.ts';
 import { pingProviderConnection, resolveProviderApiKey } from '../adapters/executor.ts';
 import { toComboModelSlug } from '../../lib/combo-helpers.ts';
+import { liveTracker } from '../engine/live-tracker.ts';
 import type { ModelConfig, ProviderConfig, RequestLog } from '../../types/gateway.ts';
 
 const router = Router();
@@ -618,6 +619,8 @@ router.post('/test/playground', async (req: Request, res: Response) => {
   const effectiveSystem = system ?? systemPrompt ?? '';
   const start = Date.now();
   const endpoint = protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions';
+  const reqId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  let finishLive: ((details: any) => void) | null = null;
 
   if (db.getSettings().emergencyKillSwitch) {
     return res.status(503).json({
@@ -646,6 +649,15 @@ router.post('/test/playground', async (req: Request, res: Response) => {
           });
 
     const route = resolveRoute(parsed.model, parsed);
+
+    finishLive = liveTracker.startRequest(
+      reqId,
+      route.selectedProvider.id,
+      route.selectedProvider.name,
+      route.selectedModel.displayName,
+      'playground'
+    );
+
     const execRes = await executeWithFallback(route, parsed);
     const latencyMs = Date.now() - start;
 
@@ -659,7 +671,7 @@ router.post('/test/playground', async (req: Request, res: Response) => {
     );
 
     const log: RequestLog = {
-      id: `req_${Date.now()}`,
+      id: reqId,
       timestamp: new Date().toISOString(),
       clientType: 'playground',
       endpoint,
@@ -678,6 +690,14 @@ router.post('/test/playground', async (req: Request, res: Response) => {
       streaming: false,
     };
     db.addLog(log);
+    if (finishLive) {
+      finishLive({
+        status: execRes.wasFallback ? 'fallback_success' : 'success',
+        latencyMs,
+        endpoint,
+        log,
+      });
+    }
 
     res.json({
       success: true,
@@ -696,8 +716,8 @@ router.post('/test/playground', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     const latencyMs = Date.now() - start;
-    db.addLog({
-      id: `req_${Date.now()}`,
+    const log: RequestLog = {
+      id: reqId,
       timestamp: new Date().toISOString(),
       clientType: 'playground',
       endpoint,
@@ -715,12 +735,116 @@ router.post('/test/playground', async (req: Request, res: Response) => {
       fallbackHistory: [],
       errorMessage: err.message,
       streaming: false,
-    });
+    };
+    db.addLog(log);
+    if (finishLive) {
+      finishLive({
+        status: 'error',
+        latencyMs,
+        endpoint,
+        log,
+      });
+    }
     res.status(400).json({ success: false, error: err.message, latencyMs });
   }
 });
 
-// 13. Export, Import & Factory Reset Configuration
+// 13. Live Activity & Active Provider Monitoring
+router.get('/live-status', (_req: Request, res: Response) => {
+  const status = liveTracker.getLiveStatus(db);
+  res.json(status);
+});
+
+// Simulate / quick-test live request through gateway
+router.post('/simulate-live-request', async (_req: Request, res: Response) => {
+  const start = Date.now();
+  const reqId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  let finishLive: ((details: any) => void) | null = null;
+
+  try {
+    const parsed = parseAnthropicRequest({
+      model: 'auto',
+      messages: [{ role: 'user', content: 'Respond with a short ping status (under 5 words).' }],
+      stream: false,
+    });
+
+    const route = resolveRoute('auto', parsed);
+    finishLive = liveTracker.startRequest(
+      reqId,
+      route.selectedProvider.id,
+      route.selectedProvider.name,
+      route.selectedModel.displayName,
+      'live-monitor'
+    );
+
+    const execRes = await executeWithFallback(route, parsed);
+    const latencyMs = Date.now() - start;
+
+    const inputTokens = execRes.response.usage.inputTokens;
+    const outputTokens = execRes.response.usage.outputTokens;
+    const costUsd = Number(
+      (
+        (inputTokens / 1e6) * (execRes.selectedModel.pricing.inputPer1MTokens || 0.15) +
+        (outputTokens / 1e6) * (execRes.selectedModel.pricing.outputPer1MTokens || 0.6)
+      ).toFixed(5)
+    );
+
+    const log: RequestLog = {
+      id: reqId,
+      timestamp: new Date().toISOString(),
+      clientType: 'playground',
+      endpoint: '/v1/messages',
+      requestedModel: 'auto',
+      resolvedModel: execRes.selectedModel.displayName,
+      selectedProvider: execRes.selectedProvider.name,
+      routingStrategy: route.strategy,
+      status: execRes.wasFallback ? 'fallback_success' : 'success',
+      statusCode: 200,
+      latencyMs,
+      inputTokens,
+      outputTokens,
+      estimatedCostUsd: costUsd,
+      retryCount: execRes.retryCount,
+      fallbackHistory: execRes.fallbackHistory,
+      streaming: false,
+    };
+    db.addLog(log);
+
+    if (finishLive) {
+      finishLive({
+        status: execRes.wasFallback ? 'fallback_success' : 'success',
+        latencyMs,
+        endpoint: '/v1/messages',
+        log,
+      });
+    }
+
+    res.json({
+      success: true,
+      provider: execRes.selectedProvider.name,
+      model: execRes.selectedModel.displayName,
+      latencyMs,
+      content: execRes.response.content,
+      liveStatus: liveTracker.getLiveStatus(db),
+    });
+  } catch (err: any) {
+    const latencyMs = Date.now() - start;
+    if (finishLive) {
+      finishLive({
+        status: 'error',
+        latencyMs,
+        endpoint: '/v1/messages',
+      });
+    }
+    res.status(400).json({
+      success: false,
+      error: err.message,
+      liveStatus: liveTracker.getLiveStatus(db),
+    });
+  }
+});
+
+// 14. Export, Import & Factory Reset Configuration
 router.get('/export-config', (_req: Request, res: Response) => {
   const jsonStr = db.exportConfig();
   res.setHeader('Content-Disposition', 'attachment; filename="msroute-config.json"');
@@ -741,3 +865,4 @@ router.post('/reset-state', (_req: Request, res: Response) => {
 });
 
 export default router;
+

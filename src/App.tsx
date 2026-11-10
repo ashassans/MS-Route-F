@@ -26,6 +26,7 @@ import type {
   RequestLog,
   GatewayAnalytics,
   GatewaySettings,
+  LiveGatewayStatus,
 } from './types/gateway.ts';
 
 export default function App() {
@@ -40,8 +41,24 @@ export default function App() {
   const [logs, setLogs] = useState<RequestLog[]>([]);
   const [analytics, setAnalytics] = useState<GatewayAnalytics | null>(null);
   const [settings, setSettings] = useState<GatewaySettings | null>(null);
+  const [liveStatus, setLiveStatus] = useState<LiveGatewayStatus | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
+
+  const fetchLiveStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/live-status');
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await readApiJson<LiveGatewayStatus>(res);
+          setLiveStatus(data);
+        }
+      }
+    } catch {
+      // background telemetry error ignored
+    }
+  }, []);
 
   const fetchAllData = useCallback(async () => {
     try {
@@ -103,12 +120,22 @@ export default function App() {
 
   useEffect(() => {
     fetchAllData();
+    fetchLiveStatus();
     testConnection();
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
     });
-    return () => unsub();
-  }, [fetchAllData]);
+
+    // High frequency 2.5s polling for active provider and live traffic radar
+    const interval = setInterval(() => {
+      fetchLiveStatus();
+    }, 2500);
+
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
+  }, [fetchAllData, fetchLiveStatus]);
 
   const activeProviderCount = providers.filter((p) => p.enabled).length;
   const activeKeyCount = apiKeys.filter((k) => !k.revoked).length;
@@ -134,11 +161,13 @@ export default function App() {
           activeProviderCount={activeProviderCount}
           activeKeyCount={activeKeyCount}
           currentUser={currentUser}
+          liveStatus={liveStatus}
+          onNavigate={setCurrentView}
           onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
-          <div key={currentView} className="max-w-7xl mx-auto animate-fade-in">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 flex flex-col">
+          <div key={currentView} className="max-w-7xl mx-auto w-full flex-1 flex flex-col animate-fade-in">
             {bannerError && (
               <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center justify-between">
                 <span>{bannerError}</span>
@@ -160,6 +189,8 @@ export default function App() {
                 logs={logs}
                 analytics={analytics}
                 settings={settings}
+                liveStatus={liveStatus}
+                onRefresh={fetchAllData}
                 onNavigate={setCurrentView}
               />
             )}
@@ -167,6 +198,7 @@ export default function App() {
             {currentView === 'providers' && (
               <ProvidersView
                 providers={providers}
+                liveStatus={liveStatus}
                 onRefresh={fetchAllData}
               />
             )}

@@ -3,9 +3,10 @@ import {
   Key,
   Layers,
   Menu,
+  Zap,
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
-import type { GatewaySettings } from '../types/gateway.ts';
+import type { GatewaySettings, LiveGatewayStatus } from '../types/gateway.ts';
 
 interface HeaderProps {
   currentView: string;
@@ -13,6 +14,8 @@ interface HeaderProps {
   activeProviderCount: number;
   activeKeyCount: number;
   currentUser: User | null;
+  liveStatus?: LiveGatewayStatus | null;
+  onNavigate?: (view: string) => void;
   onToggleMobileMenu?: () => void;
 }
 
@@ -20,6 +23,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentView,
   activeProviderCount,
   activeKeyCount,
+  liveStatus,
+  onNavigate,
   onToggleMobileMenu,
 }) => {
   const viewTitles: Record<string, { title: string; subtitle: string }> = {
@@ -41,6 +46,10 @@ export const Header: React.FC<HeaderProps> = ({
     title: 'System Overview',
     subtitle: 'Gateway Telemetry & Metrics',
   };
+
+  const isProcessing = Boolean(liveStatus?.isProcessing && (liveStatus?.inFlightRequests?.length ?? 0) > 0);
+  const activeReq = liveStatus?.inFlightRequests?.[0];
+  const lastUsed = liveStatus?.lastUsed;
 
   return (
     <header className="border-b border-[#e9e4db] bg-[#faf8f5]/90 backdrop-blur sticky top-0 z-30 px-4 sm:px-8 py-3.5 sm:py-4.5 transition-all">
@@ -70,7 +79,30 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto shrink-0">
+          {/* Live In-Flight Request Pulse */}
+          {isProcessing && activeReq ? (
+            <div className="flex items-center gap-2 bg-[#dcfce7] text-[#14532d] border border-[#86efac] rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-semibold shadow-2xs animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-ping shrink-0" />
+              <Zap className="w-3.5 h-3.5 text-[#16a34a] shrink-0" />
+              <span className="font-mono text-[10px] sm:text-[11px]">
+                LIVE: {activeReq.providerName} ({activeReq.model})
+              </span>
+            </div>
+          ) : lastUsed ? (
+            <button
+              type="button"
+              onClick={() => onNavigate?.('overview')}
+              className="flex items-center gap-1.5 bg-[#f5f1eb] hover:bg-[#ebe4da] text-stone-700 border border-[#e2dcd1] rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-medium shadow-2xs transition cursor-pointer"
+              title={`Last routed via ${lastUsed.providerName} (${lastUsed.model}) in ${lastUsed.latencyMs}ms`}
+            >
+              <span className="w-2 h-2 rounded-full bg-[#16a34a] shrink-0" />
+              <span className="text-stone-400 font-normal">Active:</span>
+              <span className="font-semibold text-stone-900">{lastUsed.providerName}</span>
+              <span className="text-stone-500 text-[10px] font-mono hidden md:inline">({lastUsed.model})</span>
+            </button>
+          ) : null}
+
           <div className="flex items-center gap-1.5 bg-[#edf5fd] text-[#1e4e8c] border border-[#d2e4f7] rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-medium shadow-2xs">
             <Layers className="w-3.5 h-3.5 text-[#2b6cb0]" />
             <span>{activeProviderCount} Providers</span>

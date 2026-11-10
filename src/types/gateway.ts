@@ -200,3 +200,48 @@ export interface GatewayAnalytics {
     errors: number;
   }>;
 }
+
+export interface LiveInFlightRequest {
+  id: string;
+  providerId: string;
+  providerName: string;
+  model: string;
+  clientType: string;
+  startedAt: string;
+  elapsedMs: number;
+}
+
+export interface LiveProviderState {
+  id: string;
+  name: string;
+  type: ProviderType;
+  enabled: boolean;
+  isCurrentlyActive: boolean;
+  inFlightCount: number;
+  lastUsedAt?: string;
+  totalRequests: number;
+  recentRequests15m: number;
+  averageLatencyMs: number;
+  healthStatus: HealthStatus;
+}
+
+export interface LiveGatewayStatus {
+  isProcessing: boolean;
+  inFlightCount: number;
+  inFlightRequests: LiveInFlightRequest[];
+  lastUsed: {
+    id: string;
+    providerId?: string;
+    providerName: string;
+    model: string;
+    timestamp: string;
+    latencyMs: number;
+    status: 'success' | 'error' | 'fallback_success';
+    endpoint: string;
+    clientType: string;
+  } | null;
+  providers: LiveProviderState[];
+  recentActivity: RequestLog[];
+  serverTime: string;
+}
+

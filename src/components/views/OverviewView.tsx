@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Activity,
   Layers,
@@ -13,6 +13,7 @@ import {
   Plus,
   Radio,
   FileText,
+  Zap,
 } from 'lucide-react';
 import type {
   ProviderConfig,
@@ -22,7 +23,9 @@ import type {
   RequestLog,
   GatewayAnalytics,
   GatewaySettings,
+  LiveGatewayStatus,
 } from '../../types/gateway.ts';
+import { readApiJson } from '../../lib/api.ts';
 
 interface OverviewViewProps {
   providers: ProviderConfig[];
@@ -32,6 +35,8 @@ interface OverviewViewProps {
   logs: RequestLog[];
   analytics: GatewayAnalytics | null;
   settings: GatewaySettings | null;
+  liveStatus?: LiveGatewayStatus | null;
+  onRefresh?: () => void;
   onNavigate: (view: string) => void;
 }
 
@@ -43,8 +48,18 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   logs,
   analytics,
   settings,
+  liveStatus,
+  onRefresh,
   onNavigate,
 }) => {
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationResult, setSimulationResult] = useState<{
+    provider: string;
+    model: string;
+    latencyMs: number;
+    content: string;
+  } | null>(null);
+
   const activeProviders = providers.filter((p) => p.enabled);
   const activeModels = models.filter((m) => m.enabled);
   const activeCombo = combos.find((c) => c.id === settings?.defaultComboId) || combos[0] || null;
@@ -70,8 +85,204 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         ? `${todayReqs >= yesterdayReqs ? '+' : ''}${Math.round(((todayReqs - yesterdayReqs) / yesterdayReqs) * 100)}% vs yesterday`
         : `${todayReqs} today`;
 
+  const isProcessing = Boolean(liveStatus?.isProcessing && (liveStatus?.inFlightRequests?.length ?? 0) > 0);
+  const activeReq = liveStatus?.inFlightRequests?.[0];
+  const lastUsed = liveStatus?.lastUsed;
+  const liveProviders = liveStatus?.providers || [];
+
+  const handleSimulateLiveRequest = async () => {
+    setIsSimulating(true);
+    try {
+      const res = await fetch('/api/simulate-live-request', { method: 'POST' });
+      const data = await readApiJson(res, 'Simulate Live API');
+      if (data.success) {
+        setSimulationResult({
+          provider: data.provider,
+          model: data.model,
+          latencyMs: data.latencyMs,
+          content: data.content,
+        });
+        if (onRefresh) onRefresh();
+      }
+    } catch (err: any) {
+      console.error('Simulation error:', err);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Live Active Provider & Real-Time Traffic Radar */}
+      <div className="bg-gradient-to-r from-[#edf7f1] via-[#f5faf6] to-[#edf7f1] border border-[#cbe4d4] rounded-3xl p-5 sm:p-6 shadow-xs transition-all">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#d5ede0] border border-[#b8dfc8] flex items-center justify-center text-[#144728] shadow-2xs shrink-0">
+              <Radio className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-editorial text-xl sm:text-2xl font-medium text-stone-900">
+                  Live Provider Activity & Traffic Radar
+                </h3>
+                <span className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#dcfce7] text-[#14532d] border border-[#86efac] rounded-full flex items-center gap-1.5 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-ping" />
+                  Real-Time Monitor
+                </span>
+              </div>
+              <p className="text-xs text-stone-500 mt-0.5">
+                Real-time upstream telemetry across Claude Code, cURL, OpenAI SDKs, and Playground
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+            <button
+              onClick={handleSimulateLiveRequest}
+              disabled={isSimulating || activeProviders.length === 0}
+              className="px-3.5 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] disabled:opacity-50 text-[#143a24] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              title="Send a quick test request through the active gateway pipeline"
+            >
+              <Zap className={`w-3.5 h-3.5 ${isSimulating ? 'animate-spin' : ''}`} />
+              <span>{isSimulating ? 'Routing Ping...' : 'Test Live Request / Ping'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Active In-Flight or Last Routed Details */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          {/* Box 1: Currently Active Provider */}
+          <div className="bg-white/95 backdrop-blur border border-[#d6e8dc] rounded-2xl p-4 flex flex-col justify-between shadow-2xs">
+            <div>
+              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block mb-1">
+                Currently Active Provider
+              </span>
+              {isProcessing && activeReq ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#16a34a] animate-ping" />
+                    <span className="text-lg font-bold text-stone-900">{activeReq.providerName}</span>
+                  </div>
+                  <p className="text-xs text-stone-600 font-mono">
+                    Model: <strong className="text-stone-800">{activeReq.model}</strong>
+                  </p>
+                  <p className="text-[11px] text-[#15803d] font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#16a34a]" />
+                    In-flight for {activeReq.elapsedMs}ms • Client: {activeReq.clientType}
+                  </p>
+                </div>
+              ) : lastUsed ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#16a34a]" />
+                    <span className="text-lg font-bold text-stone-900">{lastUsed.providerName}</span>
+                  </div>
+                  <p className="text-xs text-stone-600 font-mono">
+                    Model: <strong className="text-stone-800">{lastUsed.model}</strong>
+                  </p>
+                  <p className="text-[11px] text-stone-500">
+                    Latency: <strong className="text-stone-700">{lastUsed.latencyMs}ms</strong> • Status:{' '}
+                    <span className={lastUsed.status === 'error' ? 'text-rose-600 font-semibold' : 'text-emerald-700 font-semibold'}>
+                      {lastUsed.status}
+                    </span>
+                  </p>
+                </div>
+              ) : (
+                <div className="py-2">
+                  <p className="text-sm font-semibold text-stone-700">Awaiting First Request</p>
+                  <p className="text-xs text-stone-400 mt-0.5">Dispatched requests will appear live</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 pt-2.5 border-t border-[#f0eae1] flex items-center justify-between text-[11px] text-stone-400">
+              <span>Routing Mode:</span>
+              <span className="font-semibold text-stone-700 font-mono">
+                {(settings?.defaultRoutingMode || 'auto').toUpperCase()}
+              </span>
+            </div>
+          </div>
+
+          {/* Box 2: Live Provider Fleet Status */}
+          <div className="bg-white/95 backdrop-blur border border-[#d6e8dc] rounded-2xl p-4 flex flex-col justify-between shadow-2xs md:col-span-2">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+                  Connected Provider Fleet ({providers.length} Registered)
+                </span>
+                <button
+                  onClick={() => onNavigate('providers')}
+                  className="text-[11px] text-[#205e3b] hover:underline font-semibold cursor-pointer"
+                >
+                  Manage Providers →
+                </button>
+              </div>
+
+              {providers.length === 0 ? (
+                <p className="text-xs text-stone-400 py-3">No upstream providers configured yet.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {(liveProviders.length > 0 ? liveProviders : providers.map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    type: p.type,
+                    enabled: p.enabled,
+                    isCurrentlyActive: false,
+                    inFlightCount: 0,
+                    lastUsedAt: undefined,
+                    totalRequests: logs.filter((l) => l.selectedProvider === p.name).length,
+                    recentRequests15m: 0,
+                    averageLatencyMs: p.health.latencyMs || 0,
+                    healthStatus: p.health.status,
+                  }))).map((p) => {
+                    const isSelectedActive = p.isCurrentlyActive || (lastUsed?.providerName === p.name);
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-2.5 rounded-xl border transition ${
+                          p.isCurrentlyActive
+                            ? 'bg-[#ecfdf5] border-[#86efac] shadow-2xs'
+                            : isSelectedActive
+                              ? 'bg-[#f4faf6] border-[#cbe4d4]'
+                              : 'bg-[#faf8f5] border-[#ede8df]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-semibold text-stone-800 truncate">{p.name}</span>
+                          {p.isCurrentlyActive ? (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse">
+                              LIVE
+                            </span>
+                          ) : isSelectedActive ? (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-semibold bg-[#e1f1e6] text-[#1c4d32]">
+                              ACTIVE
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-stone-400 font-mono uppercase">{p.type}</span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-[10px] text-stone-500 flex items-center justify-between">
+                          <span>{p.totalRequests} reqs</span>
+                          <span className="font-mono">{p.averageLatencyMs > 0 ? `${p.averageLatencyMs}ms` : '—'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {simulationResult && (
+              <div className="mt-2.5 pt-2 border-t border-[#f0eae1] flex items-center justify-between text-xs text-stone-600">
+                <span>
+                  Last Test Ping: <strong className="text-stone-800">{simulationResult.provider}</strong> ({simulationResult.model})
+                </span>
+                <span className="text-emerald-700 font-semibold font-mono">{simulationResult.latencyMs}ms OK</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* 7 Horizontal Stat Cards Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="bg-[#eaf4f4] border border-[#cde5e5] rounded-2xl p-3.5 flex flex-col justify-between shadow-xs">

@@ -99,6 +99,9 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           throw new Error(`HTTP ${res.status}: ${message}`);
         }
 
+        const providerHeader = res.headers.get('x-msroute-provider');
+        const modelHeader = res.headers.get('x-msroute-model');
+
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
         let accumulated = '';
@@ -145,6 +148,8 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           stream: true,
           protocol,
           model: selectedModel,
+          selectedProvider: providerHeader || undefined,
+          resolvedModel: modelHeader || selectedModel,
         });
       } else {
         const res = await fetch('/api/test/playground', {
@@ -344,7 +349,13 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
               </div>
 
               {responseMeta && (
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-2 text-xs flex-wrap">
+                  {(responseMeta.selectedProvider || responseMeta.provider) && (
+                    <span className="px-2 py-0.5 rounded-md bg-[#e2f3e7] text-[#164e29] border border-[#bfe4ca] font-semibold flex items-center gap-1 text-[11px]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#16a34a]" />
+                      Routed via: {responseMeta.selectedProvider || responseMeta.provider}
+                    </span>
+                  )}
                   <span className="text-stone-500 flex items-center gap-1 font-mono">
                     <Clock className="w-3.5 h-3.5 text-blue-600" />
                     {responseMeta.latencyMs}ms

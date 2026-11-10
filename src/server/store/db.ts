@@ -200,7 +200,7 @@ function buildInitialSettings(defaultModelId = ''): GatewaySettings {
   };
 }
 
-class GatewayStore {
+export class GatewayStore {
   private state: GatewayDatabaseState;
   private customSaveHook: ((json: string) => void) | null = null;
 

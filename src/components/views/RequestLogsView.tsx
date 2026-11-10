@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FileText,
   Search,
@@ -219,8 +220,8 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
       </div>
 
       {/* Trace Inspection Modal */}
-      {selectedLog && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-full items-center justify-center">
+      {selectedLog && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 md:p-6 flex min-h-screen items-center justify-center">
           <div className="relative w-full max-w-xl my-auto bg-white border border-[#e8e2d8] rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden animate-fade-in">
             {/* Fixed Header */}
             <div className="flex items-center justify-between border-b border-[#f0eae1] px-5 sm:px-6 py-4 shrink-0 bg-white">
@@ -269,7 +270,8 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
