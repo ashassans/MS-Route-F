@@ -80,9 +80,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               <Radio className="w-5 h-5 animate-pulse" />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-editorial text-xl sm:text-2xl font-medium text-stone-900">
+              <h2 className="font-editorial text-xl sm:text-2xl font-medium text-stone-900">
                 Live Traffic
-              </h3>
+              </h2>
               <span className="px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#dcfce7] text-[#14532d] border border-[#86efac] rounded-full flex items-center gap-1.5 shadow-2xs">
                 <span className="w-2 h-2 rounded-full bg-[#16a34a] animate-ping" />
                 Live
@@ -131,8 +131,12 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 </div>
               ) : (
                 <div className="py-2">
-                  <p className="text-sm font-semibold text-stone-700">Awaiting First Request</p>
-                  <p className="text-xs text-stone-400 mt-0.5">Dispatched requests will appear live</p>
+                  <p className="text-sm font-semibold text-stone-700">
+                    {totalRequests > 0 ? 'Live Feed Idle' : 'Ready for Requests'}
+                  </p>
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    {totalRequests > 0 ? 'Waiting for next request' : 'Send a request to see live routing'}
+                  </p>
                 </div>
               )}
             </div>
@@ -273,15 +277,34 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </div>
         </div>
 
-        <div className="bg-[#eef6fc] border border-[#d4e8f7] rounded-2xl p-3.5 flex flex-col justify-between shadow-xs">
-          <div className="flex items-center justify-between gap-1 text-stone-600 mb-1">
-            <span className="text-[11px] font-semibold text-stone-700 whitespace-nowrap">Avg Latency</span>
-            <Clock className="w-3.5 h-3.5 text-[#0284c7] shrink-0" />
-          </div>
-          <div className="text-2xl font-bold text-stone-900 tracking-tight my-1">
-            {averageLatency} <span className="text-xs text-stone-500 font-medium">ms</span>
-          </div>
-        </div>
+        {(() => {
+          const isHigh = averageLatency > 2500;
+          const isMedium = averageLatency > 1000 && averageLatency <= 2500;
+          const cardBg = isHigh ? 'bg-[#fef2f2] border-[#fecaca]' : isMedium ? 'bg-[#fffbeb] border-[#fde68a]' : 'bg-[#eef6fc] border-[#d4e8f7]';
+          const iconColor = isHigh ? 'text-rose-600' : isMedium ? 'text-amber-600' : 'text-[#0284c7]';
+          const valColor = isHigh ? 'text-rose-700' : isMedium ? 'text-amber-800' : 'text-stone-900';
+          const badgeText = isHigh ? 'High' : isMedium ? 'Moderate' : 'Optimal';
+          const badgeBg = isHigh ? 'bg-rose-100 text-rose-700' : isMedium ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800';
+
+          return (
+            <div className={`${cardBg} border rounded-2xl p-3.5 flex flex-col justify-between shadow-xs transition-colors`}>
+              <div className="flex items-center justify-between gap-1 text-stone-600 mb-1">
+                <span className="text-[11px] font-semibold text-stone-700 whitespace-nowrap">Avg Latency</span>
+                <Clock className={`w-3.5 h-3.5 ${iconColor} shrink-0`} />
+              </div>
+              <div className="flex items-baseline justify-between gap-1 my-1">
+                <div className={`text-2xl font-bold ${valColor} tracking-tight`}>
+                  {averageLatency} <span className="text-xs text-stone-500 font-medium">ms</span>
+                </div>
+                {totalRequests > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${badgeBg}`}>
+                    {badgeText}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Active Routing Banner & Developer Actions Card */}

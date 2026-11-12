@@ -255,8 +255,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
-              <span className="text-[11px] font-semibold text-stone-600">Account Access</span>
-              <span className="text-[10px] text-stone-400">Not signed in</span>
+              <span className="text-[11px] font-semibold text-stone-700 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Local Session
+              </span>
+              <span className="text-[10px] text-stone-400 font-medium">Active</span>
             </div>
             <button
               onClick={handleSignIn}

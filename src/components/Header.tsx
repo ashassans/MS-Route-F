@@ -55,11 +55,12 @@ export const Header: React.FC<HeaderProps> = ({
           {onToggleMobileMenu && (
             <button
               onClick={onToggleMobileMenu}
-              className="md:hidden p-2 text-stone-600 hover:text-stone-900 hover:bg-[#eae4da] rounded-xl transition cursor-pointer"
+              className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 text-stone-700 hover:text-stone-900 bg-white hover:bg-[#eae4da] border border-[#dcd6cc] rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs"
               title="Toggle Menu"
               aria-label="Toggle navigation menu"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="w-4 h-4" />
+              <span>Menu</span>
             </button>
           )}
           <div>
