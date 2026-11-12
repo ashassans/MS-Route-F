@@ -45,6 +45,49 @@ claude
 
 Do not commit real credentials to source control.
 
+## Using the OpenAI-compatible API
+
+Use your MSRoute gateway key as the API key and a model name or alias configured in your account.
+
+### cURL
+
+```bash
+curl https://msroute.hassns.workers.dev/v1/chat/completions \
+  -H "Authorization: Bearer <your-gateway-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "<your-model-or-alias>",
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ]
+  }'
+```
+
+### Python with the OpenAI SDK
+
+```bash
+pip install openai
+```
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    api_key=os.environ["MSROUTE_API_KEY"],
+    base_url="https://msroute.hassns.workers.dev/v1",
+)
+
+response = client.chat.completions.create(
+    model="<your-model-or-alias>",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+
+print(response.choices[0].message.content)
+```
+
+Set `MSROUTE_API_KEY` to your gateway key before running the Python example. Do not commit real credentials to source control.
+
 ## Supported providers
 
 MSRoute is designed to work with Anthropic, Google Gemini, OpenAI, DeepSeek, and Groq. Provider availability depends on the credentials and models configured in your account.
