@@ -96,11 +96,8 @@ export const HealthView: React.FC<HealthViewProps> = ({ providers, onRefresh, on
         <div>
           <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
             <HeartPulse className="w-5 h-5 text-[#1c4d32]" />
-            Provider Health Matrix
+            Health Matrix
           </h2>
-          <p className="text-xs text-stone-600 mt-1">
-            Live upstream connectivity checks, measured round-trip latency, and circuit-breaker controls.
-          </p>
         </div>
 
         <button

@@ -64,7 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'routing', label: 'Routing Engine', icon: GitBranch },
     { id: 'combos', label: 'Combo Builder', icon: Layers },
     { id: 'keys', label: 'API Keys', icon: KeyRound },
-    { id: 'request', label: 'Make a Request', icon: Terminal, badge: 'cURL / SDK' },
+    { id: 'request', label: 'Make a Request', icon: Terminal },
     { id: 'playground', label: 'API Playground', icon: Play },
     { id: 'analytics', label: 'Usage & Cost', icon: BarChart3 },
     { id: 'logs', label: 'Request Logs', icon: FileText },
@@ -116,7 +116,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   AI
                 </span>
               </div>
-              <p className="text-[11px] text-[#5c6e64] font-normal">Personal AI Cloud Gateway</p>
             </div>
           </div>
 
@@ -133,10 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation List */}
-        <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-1">
-          <div className="px-3 pb-2 text-[10px] font-semibold text-[#687b70] uppercase tracking-wider">
-            Infrastructure Core
-          </div>
+        <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-1">
           {navItems.slice(0, 6).map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -161,9 +157,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
 
-        <div className="px-3 pt-5 pb-2 text-[10px] font-semibold text-[#687b70] uppercase tracking-wider">
-          Clients & Testing
-        </div>
+        <div className="my-2 border-t border-[#dce8e0]" />
+
         {navItems.slice(6, 8).map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
@@ -184,18 +179,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Icon className={`w-4 h-4 ${isActive ? 'text-[#1c4d32]' : 'text-[#617468]'}`} />
                 <span>{item.label}</span>
               </div>
-              {item.badge && (
-                <span className="px-1.5 py-0.5 text-[9px] bg-[#ede9fe] text-[#5b21b6] border border-[#ddd6fe] rounded font-mono font-medium">
-                  {item.badge}
-                </span>
-              )}
             </button>
           );
         })}
 
-        <div className="px-3 pt-5 pb-2 text-[10px] font-semibold text-[#687b70] uppercase tracking-wider">
-          Telemetry & Config
-        </div>
+        <div className="my-2 border-t border-[#dce8e0]" />
         {navItems.slice(8).map((item) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;

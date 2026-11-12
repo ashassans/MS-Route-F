@@ -186,24 +186,19 @@ export const PlaygroundView: React.FC<PlaygroundViewProps> = ({
           <Play className="w-5 h-5 text-[#1c4d32]" />
           API Playground
         </h2>
-        <p className="text-xs text-stone-500 mt-0.5">
-          Live testing for models, combos, and streaming
-        </p>
       </div>
 
       {!hasTargets && (
         <div className="bg-[#fff8ea] border border-[#fde4ad] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#8a5d15]">
           <div className="flex items-center gap-2.5">
             <Radio className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>
-              No AI providers or models are registered yet. Connect a provider with a valid upstream credential before dispatching live requests.
-            </span>
+            <span>No providers connected.</span>
           </div>
           <button
             onClick={() => onNavigate('providers')}
             className="px-3.5 py-1.5 bg-white hover:bg-[#faf8f5] text-stone-800 border border-[#e5dfd5] rounded-xl font-semibold transition cursor-pointer shrink-0"
           >
-            Configure Provider →
+            Providers →
           </button>
         </div>
       )}

@@ -249,9 +249,6 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
               </button>
             </div>
           </div>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Model catalog and dynamic alias routing
-          </p>
         </div>
 
         {activeTab === 'models' ? (
@@ -277,18 +274,13 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
       {activeTab === 'models' && (
         models.length === 0 ? (
-          <div className="bg-white border border-[#e8e2d8] rounded-2xl p-8 text-center shadow-xs space-y-2">
+          <div className="bg-white border border-[#e8e2d8] rounded-2xl p-8 text-center shadow-xs space-y-3">
             <div className="w-10 h-10 rounded-xl bg-[#eff6f2] border border-[#d6e5dc] flex items-center justify-center mx-auto text-[#1c4d32]">
               <Cpu className="w-5 h-5" />
             </div>
             <h3 className="text-base font-semibold text-stone-900">No Models</h3>
-            <p className="text-xs text-stone-500 max-w-sm mx-auto">
-              {providers.length === 0
-                ? 'Add a provider first. Its models will be automatically registered.'
-                : 'Register a model to set context windows and token pricing.'}
-            </p>
             {providers.length > 0 && (
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   onClick={handleOpenModelModal}
                   className="px-4 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
@@ -425,15 +417,12 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
 
       {activeTab === 'aliases' && (
         aliases.length === 0 ? (
-          <div className="bg-white border border-[#e8e2d8] rounded-2xl p-8 text-center shadow-xs space-y-2">
+          <div className="bg-white border border-[#e8e2d8] rounded-2xl p-8 text-center shadow-xs space-y-3">
             <div className="w-10 h-10 rounded-xl bg-[#eff6f2] border border-[#d6e5dc] flex items-center justify-center mx-auto text-[#1c4d32]">
               <Tag className="w-5 h-5" />
             </div>
             <h3 className="text-base font-semibold text-stone-900">No Aliases</h3>
-            <p className="text-xs text-stone-500 max-w-sm mx-auto">
-              Create aliases to map incoming model names dynamically to models or combos.
-            </p>
-            <div className="pt-2">
+            <div className="pt-1">
               <button
                 onClick={handleOpenAliasModal}
                 disabled={models.length === 0 && combos.length === 0}

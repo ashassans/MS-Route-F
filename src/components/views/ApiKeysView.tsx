@@ -91,9 +91,6 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
             <KeyRound className="w-5 h-5 text-[#1c4d32]" />
             API Keys
           </h2>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Client authentication keys and rate limits
-          </p>
         </div>
         <button
           onClick={() => {
@@ -116,32 +113,17 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
         </div>
       )}
 
-      {/* Security Architecture Callout */}
-      <div className="bg-white border border-[#e8e2d8] rounded-2xl p-4 flex items-center justify-between text-xs text-stone-600 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-[#ecf7ef] border border-[#cbe8d2] flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4 h-4 text-[#16a34a]" />
-          </div>
-          <div>
-            <span className="font-semibold text-stone-800">Zero-Knowledge Storage:</span> Only a cryptographic SHA-256 digest is persisted. Full gateway tokens are revealed once upon creation.
-          </div>
-        </div>
-        <span className="hidden md:inline px-2 py-0.5 bg-[#faf8f5] border border-[#e5dfd5] rounded-md text-[11px] font-mono text-stone-700 font-semibold">
-          Prefix: gw-live-...
-        </span>
-      </div>
-
       {/* API Keys Table */}
       <div className="bg-white border border-[#e8e2d8] rounded-3xl overflow-hidden shadow-xs">
-        <div className="p-5 border-b border-[#f0eae1] flex items-center justify-between">
-          <h3 className="font-bold text-sm text-stone-900">Issued Gateway Credentials ({apiKeys.length})</h3>
+        <div className="p-4 border-b border-[#f0eae1] flex items-center justify-between">
+          <h3 className="font-bold text-sm text-stone-900">Keys ({apiKeys.length})</h3>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-[#f0eae1] bg-[#faf8f5] text-stone-600 font-semibold">
-                <th className="p-4">Key Label & Masked Prefix</th>
+                <th className="p-4">Key</th>
                 <th className="p-4">Permissions</th>
                 <th className="p-4">Rate Limit</th>
                 <th className="p-4">Last Used</th>
@@ -153,7 +135,7 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
               {apiKeys.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-stone-500">
-                    No gateway credentials issued yet. Click <span className="font-semibold text-stone-700">Generate Gateway Key</span> to authenticate external CLI or SDK clients.
+                    No keys
                   </td>
                 </tr>
               ) : (
@@ -311,12 +293,8 @@ export const ApiKeysView: React.FC<ApiKeysViewProps> = ({ apiKeys, onRefresh }) 
           <div className="relative w-full max-w-lg my-auto bg-white border border-[#e8e2d8] rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto animate-fade-in">
             <div className="flex items-center gap-2">
               <KeyRound className="w-5 h-5 text-amber-600" />
-              <h3 className="font-editorial text-xl font-medium text-stone-900">Your New MSRoute Gateway Key</h3>
+              <h3 className="font-editorial text-lg font-medium text-stone-900">Key Generated</h3>
             </div>
-
-            <p className="text-xs text-stone-600">
-              Copy this token now for <span className="font-semibold text-stone-800">{createdKeyData.name}</span>. For security, only its SHA-256 hash is stored and the full secret cannot be shown again:
-            </p>
 
             <div className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-4 font-mono text-xs text-[#a16207] break-all select-all font-semibold">
               {createdKeyData.rawKey}

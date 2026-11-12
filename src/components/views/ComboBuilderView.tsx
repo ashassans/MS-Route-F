@@ -230,9 +230,6 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
             <Boxes className="w-5 h-5 text-[#1c4d32]" />
             Combo Builder
           </h2>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Failover, racing, and load-balanced provider pipelines
-          </p>
         </div>
         <button
           onClick={handleOpenAdd}
@@ -240,30 +237,25 @@ export const ComboBuilderView: React.FC<ComboBuilderViewProps> = ({
           title={!canBuildCombo ? 'Add a provider first' : 'Build combo'}
         >
           <Plus className="w-4 h-4" />
-          <span>{canBuildCombo ? 'Build Combo' : 'Add Provider First'}</span>
+          <span>{canBuildCombo ? 'Build Combo' : 'Add Provider'}</span>
         </button>
       </div>
 
       {/* Empty State or Combos Grid */}
       {combos.length === 0 ? (
-        <div className="bg-white border border-[#e8e2d8] rounded-3xl p-10 text-center shadow-xs space-y-3">
+        <div className="bg-white border border-[#e8e2d8] rounded-3xl p-10 text-center shadow-xs space-y-4">
           <div className="w-12 h-12 rounded-2xl bg-[#eff6f2] border border-[#d6e5dc] flex items-center justify-center mx-auto text-[#1c4d32]">
             <Boxes className="w-6 h-6" />
           </div>
-          <h3 className="font-editorial text-xl font-medium text-stone-900">No Combo Pipelines Created Yet</h3>
-          <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
-            {canBuildCombo
-              ? 'Create a multi-step combo to automatically fail over between providers on HTTP 429 rate limits, timeouts, or 5xx errors.'
-              : 'Add at least one AI provider in the Providers tab first so you can select it in your failover combo pipeline.'}
-          </p>
-          <div className="pt-2">
+          <h3 className="font-editorial text-xl font-medium text-stone-900">No Combos</h3>
+          <div>
             {canBuildCombo ? (
               <button
                 onClick={handleOpenAdd}
                 className="px-5 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-bold inline-flex items-center gap-2 transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Build Your First Combo</span>
+                <span>Build Combo</span>
               </button>
             ) : (
               <button

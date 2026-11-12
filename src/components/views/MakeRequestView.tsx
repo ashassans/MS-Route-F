@@ -103,9 +103,6 @@ console.log(completion.choices[0].message.content);`;
               <SendHorizontal className="w-5 h-5 text-[#1c4d32]" />
               Make a Request
             </h2>
-            <p className="text-xs text-stone-500 mt-0.5">
-              cURL & SDK code snippets with auto-failover
-            </p>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 bg-white/80 p-1 border border-[#d2e2d7] rounded-2xl shadow-2xs">
@@ -137,9 +134,7 @@ console.log(completion.choices[0].message.content);`;
         <div className="bg-[#fff8ea] border border-[#fde4ad] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#8a5d15] shadow-2xs">
           <div className="flex items-center gap-2.5">
             <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>
-              No active gateway key found. Generate an API Key in <strong className="font-semibold">API Keys</strong> to authenticate your requests.
-            </span>
+            <span>Generate an API Key to authenticate requests.</span>
           </div>
           <button
             onClick={() => onNavigate('keys')}
@@ -158,7 +153,7 @@ console.log(completion.choices[0].message.content);`;
               $
             </span>
             <h3 className="font-bold text-sm text-stone-900">
-              cURL Request ({selectedProtocol === 'openai' ? 'OpenAI Format' : 'Anthropic Format'})
+              cURL ({selectedProtocol === 'openai' ? 'OpenAI' : 'Anthropic'})
             </h3>
           </div>
           <button
@@ -166,13 +161,9 @@ console.log(completion.choices[0].message.content);`;
             className="text-xs text-[#205e3b] hover:text-[#133d26] flex items-center gap-1.5 font-semibold cursor-pointer px-3 py-1.5 bg-[#faf8f5] hover:bg-[#f2ede4] border border-[#e4ded5] rounded-xl transition shadow-2xs"
           >
             {copiedType === 'curl' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedType === 'curl' ? 'Copied cURL!' : 'Copy cURL'}</span>
+            <span>{copiedType === 'curl' ? 'Copied' : 'Copy'}</span>
           </button>
         </div>
-
-        <p className="text-xs text-stone-500 mb-3">
-          Copy and run in terminal or import into Postman/Insomnia:
-        </p>
 
         <pre className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-4 text-xs font-mono text-stone-800 overflow-x-auto leading-relaxed select-all">
           {currentCurl}
@@ -180,7 +171,7 @@ console.log(completion.choices[0].message.content);`;
 
         <div className="mt-4 pt-3 border-t border-[#f0eae1] flex flex-wrap items-center justify-between gap-2 text-xs text-stone-500">
           <div className="flex items-center gap-2">
-            <span>Target Endpoint:</span>
+            <span>Endpoint:</span>
             <code className="text-[#205e3b] font-mono font-semibold">{gatewayUrl}{endpointPath}</code>
           </div>
           <button
@@ -188,7 +179,7 @@ console.log(completion.choices[0].message.content);`;
             className="text-[#205e3b] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Open in Interactive Playground →</span>
+            <span>Playground →</span>
           </button>
         </div>
       </div>
@@ -201,19 +192,16 @@ console.log(completion.choices[0].message.content);`;
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-sm text-stone-900 flex items-center gap-2">
                 <Code2 className="w-4 h-4 text-[#0284c7]" />
-                Python (OpenAI SDK)
+                Python
               </h3>
               <button
                 onClick={() => handleCopy(pythonCode, 'python')}
                 className="text-xs text-[#205e3b] hover:text-[#133d26] flex items-center gap-1 font-semibold cursor-pointer transition"
               >
                 {copiedType === 'python' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedType === 'python' ? 'Copied Python!' : 'Copy'}</span>
+                <span>{copiedType === 'python' ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <p className="text-xs text-stone-500 mb-3">
-              Just set <code className="bg-[#faf8f5] px-1 py-0.5 rounded font-mono text-stone-700">base_url</code> to your MSRoute gateway:
-            </p>
 
             <pre className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-4 text-xs font-mono text-stone-800 overflow-x-auto leading-relaxed select-all">
               {pythonCode}
@@ -221,7 +209,7 @@ console.log(completion.choices[0].message.content);`;
           </div>
 
           <div className="mt-4 pt-3 border-t border-[#f0eae1] text-xs text-stone-500 flex items-center justify-between">
-            <span>Library:</span>
+            <span>Install:</span>
             <code className="text-stone-800 font-mono font-semibold">pip install openai</code>
           </div>
         </div>
@@ -232,19 +220,16 @@ console.log(completion.choices[0].message.content);`;
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-sm text-stone-900 flex items-center gap-2">
                 <Terminal className="w-4 h-4 text-[#15803d]" />
-                Node.js / TypeScript
+                Node.js
               </h3>
               <button
                 onClick={() => handleCopy(jsCode, 'js')}
                 className="text-xs text-[#205e3b] hover:text-[#133d26] flex items-center gap-1 font-semibold cursor-pointer transition"
               >
                 {copiedType === 'js' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedType === 'js' ? 'Copied Node.js!' : 'Copy'}</span>
+                <span>{copiedType === 'js' ? 'Copied' : 'Copy'}</span>
               </button>
             </div>
-            <p className="text-xs text-stone-500 mb-3">
-              Direct drop-in replacement with standard <code className="bg-[#faf8f5] px-1 py-0.5 rounded font-mono text-stone-700">baseURL</code>:
-            </p>
 
             <pre className="bg-[#faf8f5] border border-[#e4ded5] rounded-2xl p-4 text-xs font-mono text-stone-800 overflow-x-auto leading-relaxed select-all">
               {jsCode}

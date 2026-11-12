@@ -421,9 +421,6 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, liveSta
             <Radio className="w-5 h-5 text-[#1c4d32]" />
             AI Providers
           </h2>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Manage upstream endpoints and models
-          </p>
         </div>
         <button
           onClick={handleOpenAdd}
@@ -444,114 +441,38 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, liveSta
       )}
 
       {/* Empty State or Provider Cards Grid */}
-      {/* Empty State or Provider Cards Grid */}
       {providers.length === 0 ? (
-        <div className="space-y-6 flex-1 flex flex-col">
-          <div className="bg-white border border-[#e8e2d8] rounded-2xl p-6 sm:p-8 text-center shadow-xs space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-[#eff6f2] border border-[#d6e5dc] flex items-center justify-center mx-auto text-[#1c4d32]">
-              <Radio className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-semibold text-stone-900">No Providers Connected Yet</h3>
-            <p className="text-xs text-stone-500 max-w-md mx-auto">
-              MSRoute requires at least one upstream AI provider to route Anthropic (/v1/messages) and OpenAI (/v1/chat/completions) requests. Choose a quick preset below or configure a custom endpoint.
-            </p>
-            <div className="pt-2">
-              <button
-                onClick={handleOpenAdd}
-                className="px-4 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Custom Provider</span>
-              </button>
-            </div>
+        <div className="bg-white border border-[#e8e2d8] rounded-2xl p-8 text-center shadow-xs flex-1 flex flex-col items-center justify-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#eff6f2] border border-[#d6e5dc] flex items-center justify-center text-[#1c4d32]">
+            <Radio className="w-6 h-6" />
           </div>
-
-          {/* Quick-Start Preset Catalog */}
-          <div className="bg-white border border-[#e8e2d8] rounded-2xl p-5 sm:p-6 shadow-xs flex-1">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-[#16a34a]" />
-                  Quick-Connect AI Presets
-                </h3>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  Select a provider to automatically pre-configure base URLs, suggested models, and protocol adapters.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {[
-                {
-                  type: 'gemini' as ProviderType,
-                  name: 'Google Gemini',
-                  desc: 'Gemini 2.5 Flash & Pro with 1M–2M context window, fast multimodal speed & tool calling.',
-                  tag: 'Recommended',
-                  badgeBg: 'bg-[#dcfce7] text-[#14532d] border-[#86efac]',
-                },
-                {
-                  type: 'anthropic' as ProviderType,
-                  name: 'Anthropic Claude',
-                  desc: 'Claude 3.7 Sonnet & 3.5 Haiku. Industry standard for Claude Code, coding and reasoning.',
-                  tag: 'Claude Code Ready',
-                  badgeBg: 'bg-[#fef3c7] text-[#92400e] border-[#fcd34d]',
-                },
-                {
-                  type: 'openai' as ProviderType,
-                  name: 'OpenAI',
-                  desc: 'GPT-4o & GPT-4o-mini. Universal OpenAI compatible chat and completions API.',
-                  tag: 'Fast & Reliable',
-                  badgeBg: 'bg-[#e0f2fe] text-[#0369a1] border-[#7dd3fc]',
-                },
-                {
-                  type: 'deepseek' as ProviderType,
-                  name: 'DeepSeek',
-                  desc: 'DeepSeek-V3 (Chat) & DeepSeek-R1 (Reasoner). Ultra cost-effective reasoning engine.',
-                  tag: 'High Value',
-                  badgeBg: 'bg-[#ede9fe] text-[#5b21b6] border-[#c4b5fd]',
-                },
-                {
-                  type: 'groq' as ProviderType,
-                  name: 'Groq Cloud',
-                  desc: 'Llama 3.3 70B & 8B with sub-100ms ultra-low latency LPU hardware acceleration.',
-                  tag: 'Ultra Low Latency',
-                  badgeBg: 'bg-[#ffedd5] text-[#9a3412] border-[#fed7aa]',
-                },
-                {
-                  type: 'openrouter' as ProviderType,
-                  name: 'OpenRouter',
-                  desc: 'Unified multi-cloud access to 200+ open-source and proprietary models with 1 key.',
-                  tag: 'Unified Router',
-                  badgeBg: 'bg-[#f3f4f6] text-stone-700 border-stone-300',
-                },
-              ].map((preset) => (
-                <div
-                  key={preset.type}
-                  className="p-4 rounded-xl border border-[#efe9df] bg-[#faf8f5] hover:bg-white hover:border-[#b8dfc8] transition flex flex-col justify-between shadow-2xs group"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-1 mb-1.5">
-                      <h4 className="text-xs font-bold text-stone-900 group-hover:text-[#143a24] transition">
-                        {preset.name}
-                      </h4>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border ${preset.badgeBg}`}>
-                        {preset.tag}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-stone-500 leading-relaxed mb-3">
-                      {preset.desc}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleOpenAddWithPreset(preset.type)}
-                    className="w-full mt-1 px-3 py-1.5 bg-white hover:bg-[#b9dbc3] text-stone-800 hover:text-[#143a24] border border-[#e4ded5] hover:border-[#a8cfb3] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Connect {preset.name}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
+          <div>
+            <h3 className="text-base font-semibold text-stone-900">No Providers</h3>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-1 max-w-lg">
+            <button
+              onClick={handleOpenAdd}
+              className="px-4 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Custom Provider</span>
+            </button>
+            {[
+              { type: 'gemini' as ProviderType, name: 'Gemini' },
+              { type: 'anthropic' as ProviderType, name: 'Claude' },
+              { type: 'openai' as ProviderType, name: 'OpenAI' },
+              { type: 'deepseek' as ProviderType, name: 'DeepSeek' },
+              { type: 'groq' as ProviderType, name: 'Groq' },
+              { type: 'openrouter' as ProviderType, name: 'OpenRouter' },
+            ].map((p) => (
+              <button
+                key={p.type}
+                onClick={() => handleOpenAddWithPreset(p.type)}
+                className="px-3 py-2 bg-[#faf8f5] hover:bg-[#eff6f2] hover:border-[#b8dfc8] text-stone-800 text-xs font-medium rounded-xl border border-[#e4ded5] transition cursor-pointer"
+              >
+                + {p.name}
+              </button>
+            ))}
           </div>
         </div>
       ) : (
@@ -754,43 +675,6 @@ export const ProvidersView: React.FC<ProvidersViewProps> = ({ providers, liveSta
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Quick Add Presets Bar when providers already exist */}
-      {providers.length > 0 && (
-        <div className="bg-white border border-[#e8e2d8] rounded-2xl p-4 sm:p-5 shadow-xs">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[#16a34a]" />
-                Quick-Connect Additional Upstreams
-              </h3>
-              <p className="text-[11px] text-stone-500">
-                Add another provider with pre-filled models, endpoints, and protocols in one click:
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-            {[
-              { type: 'gemini' as ProviderType, name: 'Google Gemini' },
-              { type: 'anthropic' as ProviderType, name: 'Anthropic Claude' },
-              { type: 'openai' as ProviderType, name: 'OpenAI' },
-              { type: 'deepseek' as ProviderType, name: 'DeepSeek' },
-              { type: 'groq' as ProviderType, name: 'Groq Cloud' },
-              { type: 'openrouter' as ProviderType, name: 'OpenRouter' },
-            ].map((preset) => (
-              <button
-                key={preset.type}
-                type="button"
-                onClick={() => handleOpenAddWithPreset(preset.type)}
-                className="px-2.5 py-2 bg-[#faf8f5] hover:bg-[#eff6f2] hover:border-[#b8dfc8] text-stone-800 text-[11px] font-medium rounded-xl border border-[#e4ded5] transition text-center flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3 h-3 text-[#1c4d32] shrink-0" />
-                <span className="truncate">{preset.name}</span>
-              </button>
-            ))}
-          </div>
         </div>
       )}
 

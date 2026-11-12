@@ -27,25 +27,22 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onToggleMobileMenu,
 }) => {
-  const viewTitles: Record<string, { title: string; subtitle: string }> = {
-    overview: { title: 'System Overview', subtitle: 'Gateway Telemetry & Metrics' },
-    providers: { title: 'AI Providers', subtitle: 'Connected Upstream Endpoints' },
-    models: { title: 'Models & Aliases', subtitle: 'Model Catalog & Aliases' },
-    routing: { title: 'Routing Engine', subtitle: 'Routing Policies & Fallbacks' },
-    combos: { title: 'Combo Builder', subtitle: 'Pipelines & Load Balancers' },
-    keys: { title: 'API Keys', subtitle: 'Client Authentication Keys' },
-    request: { title: 'Make a Request', subtitle: 'cURL & SDK Request Snippets' },
-    playground: { title: 'API Playground', subtitle: 'Interactive Request Sandbox' },
-    analytics: { title: 'Usage & Cost', subtitle: 'Tokens & Estimated Spend' },
-    logs: { title: 'Request Logs', subtitle: 'Live Request Traces' },
-    health: { title: 'Health Matrix', subtitle: 'Endpoint Health & Latencies' },
-    settings: { title: 'Settings', subtitle: 'Gateway Configuration' },
+  const viewTitles: Record<string, string> = {
+    overview: 'System Overview',
+    providers: 'AI Providers',
+    models: 'Models & Aliases',
+    routing: 'Routing Engine',
+    combos: 'Combo Builder',
+    keys: 'API Keys',
+    request: 'Make a Request',
+    playground: 'API Playground',
+    analytics: 'Usage & Cost',
+    logs: 'Request Logs',
+    health: 'Health Matrix',
+    settings: 'Settings',
   };
 
-  const headerInfo = viewTitles[currentView] || {
-    title: 'System Overview',
-    subtitle: 'Gateway Telemetry & Metrics',
-  };
+  const title = viewTitles[currentView] || 'System Overview';
 
   const isProcessing = Boolean(liveStatus?.isProcessing && (liveStatus?.inFlightRequests?.length ?? 0) > 0);
   const activeReq = liveStatus?.inFlightRequests?.[0];
@@ -68,14 +65,13 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="font-editorial text-xl sm:text-2xl md:text-3xl font-medium text-stone-900 tracking-tight">
-                {headerInfo.title}
+                {title}
               </h1>
               <span className="px-2 py-0.5 text-[11px] font-semibold bg-[#d8ecdf] border border-[#badfc7] text-[#1b4a32] rounded-full flex items-center gap-1.5 shadow-2xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#1b4a32] animate-pulse" />
-                Gateway Online
+                Online
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-stone-500 mt-0.5 font-normal">{headerInfo.subtitle}</p>
           </div>
         </div>
 

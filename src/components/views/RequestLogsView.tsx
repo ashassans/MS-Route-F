@@ -49,11 +49,8 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
         <div>
           <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
             <FileText className="w-5 h-5 text-[#1c4d32]" />
-            Request Traces & Audit Logs
+            Request Logs
           </h2>
-          <p className="text-xs text-stone-600 mt-1">
-            Real-time audit telemetry, failover paths, and latency breakdown for client requests.
-          </p>
         </div>
 
         {confirmClear ? (
@@ -160,9 +157,7 @@ export const RequestLogsView: React.FC<RequestLogsViewProps> = ({ logs, onRefres
               {filteredLogs.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-stone-500">
-                    {logs.length === 0
-                      ? 'No gateway requests have been recorded yet. Send traffic via /v1/messages, /v1/chat/completions, or the API Playground to inspect live traces.'
-                      : 'No request logs match your current search or status filter.'}
+                    No logs found
                   </td>
                 </tr>
               ) : (

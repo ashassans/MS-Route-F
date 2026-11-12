@@ -161,13 +161,10 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
 
       {/* Mode Selection Cards */}
       <div className="bg-white border border-[#e8e2d8] rounded-3xl p-6 shadow-xs">
-        <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2 mb-2">
+        <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2 mb-4">
           <GitBranch className="w-5 h-5 text-[#1c4d32]" />
-          Routing Engine Strategy
+          Routing Engine
         </h2>
-        <p className="text-xs text-stone-600 mb-5">
-          Select how the gateway determines downstream AI providers and models for incoming requests.
-        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* 1. Combo Routing */}
@@ -181,18 +178,14 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
           >
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#1c4d32]">Strategy A</span>
+                <h3 className="font-bold text-sm text-stone-900">Combo Routing</h3>
                 {currentMode === 'combo' && <CheckCircle2 className="w-4 h-4 text-[#16a34a]" />}
               </div>
-              <h3 className="font-bold text-sm text-stone-900">Combo Routing</h3>
-              <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                Dispatches requests through a multi-provider sequential failover, parallel race, or weighted combo pipeline.
-              </p>
             </div>
             <div className="mt-4 pt-3 border-t border-[#d8e8dd] text-xs text-stone-600">
               Active:{' '}
               <span className="font-semibold text-stone-900 font-mono">
-                {combos.find((c) => c.id === defaultComboId)?.name || 'None configured'}
+                {combos.find((c) => c.id === defaultComboId)?.name || 'None'}
               </span>
             </div>
           </div>
@@ -208,13 +201,9 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
           >
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#1c4d32]">Strategy B</span>
+                <h3 className="font-bold text-sm text-stone-900">Auto Task Routing</h3>
                 {currentMode === 'auto' && <CheckCircle2 className="w-4 h-4 text-[#16a34a]" />}
               </div>
-              <h3 className="font-bold text-sm text-stone-900">Auto Task-Based Routing</h3>
-              <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                Inspects prompt characteristics, vision attachments, and tool schemas to dynamically classify and route requests.
-              </p>
             </div>
             <div className="mt-4 pt-3 border-t border-[#d8e8dd] text-xs text-stone-600">
               Active: <span className="font-semibold text-stone-900">{rules.length} Rules</span>
@@ -232,18 +221,14 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
           >
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#1c4d32]">Strategy C</span>
+                <h3 className="font-bold text-sm text-stone-900">Direct Routing</h3>
                 {currentMode === 'manual' && <CheckCircle2 className="w-4 h-4 text-[#16a34a]" />}
               </div>
-              <h3 className="font-bold text-sm text-stone-900">Direct Manual Routing</h3>
-              <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                Passes through directly to the requested upstream model or fallback default without task classification.
-              </p>
             </div>
             <div className="mt-4 pt-3 border-t border-[#d8e8dd] text-xs text-stone-600">
               Default:{' '}
               <span className="font-semibold text-stone-900 font-mono">
-                {models.find((m) => m.id === defaultModelId)?.displayName || 'None configured'}
+                {models.find((m) => m.id === defaultModelId)?.displayName || 'None'}
               </span>
             </div>
           </div>
@@ -341,7 +326,7 @@ export const RoutingView: React.FC<RoutingViewProps> = ({
               {rules.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-stone-500">
-                    No task routing rules configured yet. Auto mode uses built-in capability heuristics until custom task rules are added.
+                    No rules
                   </td>
                 </tr>
               ) : (

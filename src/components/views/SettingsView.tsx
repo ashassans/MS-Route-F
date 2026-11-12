@@ -206,14 +206,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs">
+      <div className="bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-5 shadow-xs">
         <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
           <Sliders className="w-5 h-5 text-[#1c4d32]" />
-          Gateway Infrastructure Settings
+          Settings
         </h2>
-        <p className="text-xs text-stone-600 mt-1 max-w-2xl">
-          Configure spending guardrails, timeout policies, retention days, and sanitized configuration backups.
-        </p>
       </div>
 
       {errorMsg && (
@@ -227,10 +224,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Spending & Usage Limits Form */}
       <div className="bg-white border border-[#e8e2d8] rounded-2xl p-5 shadow-xs">
-        <h3 className="font-semibold text-sm text-stone-900 mb-1">Execution & Spending Limits</h3>
-        <p className="text-xs text-stone-500 mb-4">
-          Request and monthly expenditure limits
-        </p>
+        <h3 className="font-semibold text-sm text-stone-900 mb-3">Limits & Policies</h3>
 
         <form onSubmit={handleSave} className="space-y-3.5 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -306,11 +300,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="flex items-center justify-between pt-3 border-t border-[#f0eae1]">
             {saveSuccess ? (
               <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Guardrails updated successfully!
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Saved
               </span>
-            ) : (
-              <span className="text-stone-500">Settings apply immediately across all gateway routes</span>
-            )}
+            ) : <span />}
 
             <button
               type="submit"
@@ -318,7 +310,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="px-5 py-2.5 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-xs disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              <span>{saving ? 'Saving...' : 'Save Guardrails'}</span>
+              <span>{saving ? 'Saving...' : 'Save'}</span>
             </button>
           </div>
         </form>
@@ -328,13 +320,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="bg-white border border-[#e8e2d8] rounded-3xl p-6 flex flex-col justify-between shadow-xs space-y-4">
           <div>
-            <h4 className="text-sm font-bold text-stone-900 flex items-center gap-2 mb-1">
+            <h4 className="text-sm font-bold text-stone-900 flex items-center gap-2">
               <Download className="w-4 h-4 text-[#16a34a]" />
-              Export & Reset Configuration
+              Export & Reset
             </h4>
-            <p className="text-xs text-stone-500 leading-relaxed">
-              Download your non-secret gateway configuration (models, aliases, combos, routing rules) as JSON, or reset the local gateway store to a clean slate.
-            </p>
           </div>
 
           <div className="space-y-2.5">
@@ -343,7 +332,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="w-full px-4 py-2.5 bg-[#faf8f5] hover:bg-[#f2ede4] text-stone-800 border border-[#e4ded5] rounded-2xl text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
             >
               <Download className="w-4 h-4" />
-              <span>Download msroute-config.json</span>
+              <span>msroute-config.json</span>
             </button>
 
             {confirmReset ? (
@@ -352,7 +341,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onClick={handleResetGateway}
                   className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-bold cursor-pointer"
                 >
-                  Confirm Full Reset
+                  Confirm Reset
                 </button>
                 <button
                   onClick={() => setConfirmReset(false)}
@@ -367,7 +356,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="w-full px-4 py-2 bg-white hover:bg-rose-50 text-stone-600 hover:text-rose-700 border border-[#e4ded5] hover:border-rose-200 rounded-2xl text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>{resetSuccess ? 'Gateway Reset Complete' : 'Reset Gateway State'}</span>
+                <span>{resetSuccess ? 'Reset Complete' : 'Reset Gateway'}</span>
               </button>
             )}
           </div>
@@ -375,17 +364,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <div className="bg-white border border-[#e8e2d8] rounded-3xl p-6 flex flex-col justify-between shadow-xs">
           <div>
-            <h4 className="text-sm font-bold text-stone-900 flex items-center gap-2 mb-1">
+            <h4 className="text-sm font-bold text-stone-900 flex items-center gap-2 mb-2">
               <Upload className="w-4 h-4 text-[#0284c7]" />
               Import Configuration
             </h4>
-            <p className="text-xs text-stone-500 mb-2">
-              Paste a previously exported configuration JSON to restore models, aliases, combos, and rules.
-            </p>
             <textarea
               rows={3}
               value={importJson}
               onChange={(e) => setImportJson(e.target.value)}
+              placeholder="Paste JSON..."
               className="w-full bg-[#faf8f5] border border-[#e4ded5] rounded-xl p-2.5 text-stone-800 font-mono text-xs focus:outline-none focus:border-[#205e3b]"
             />
           </div>
@@ -393,7 +380,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="mt-3 flex items-center justify-between">
             {importSuccess && (
               <span className="text-emerald-700 text-xs font-semibold flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Restored successfully!
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Restored
               </span>
             )}
             <button
@@ -402,7 +389,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="ml-auto px-4 py-2 bg-[#b9dbc3] hover:bg-[#a8cfb3] text-[#143a24] rounded-2xl text-xs font-bold flex items-center gap-2 transition cursor-pointer disabled:opacity-50"
             >
               <Upload className="w-4 h-4" />
-              <span>Import Config</span>
+              <span>Import</span>
             </button>
           </div>
         </div>
@@ -412,16 +399,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="bg-[#eff6f2] border border-[#d6e5dc] rounded-3xl p-6 shadow-xs space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2">
               <Database className="w-5 h-5 text-[#1c4d32]" />
-              <h4 className="text-sm font-bold text-stone-900">Firebase Cloud Integration & Sync</h4>
+              <h4 className="text-sm font-bold text-stone-900">Firebase Cloud Storage</h4>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#dcf0e2] text-[#1c4d32] border border-[#c3e5cd]">
                 Connected
               </span>
             </div>
-            <p className="text-xs text-stone-600">
-              Connected to Firebase Project <code className="text-[#1c4d32] font-mono font-bold">{firebaseConfig.projectId}</code> for persistent Cloud Firestore storage and Google Authentication.
-            </p>
           </div>
 
           {currentUser ? (
@@ -453,11 +437,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div>
               <h5 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
                 <CloudUpload className="w-4 h-4 text-[#1c4d32]" />
-                Cloud Firestore Config Snapshot
+                Cloud Snapshot
               </h5>
-              <p className="text-[11px] text-stone-500 mt-0.5">
-                Save your custom Combos, Routing Rules, and Settings to your Firestore cloud profile so you can restore them anytime.
-              </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">

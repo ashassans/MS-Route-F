@@ -143,11 +143,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ analytics }) => {
         <div>
           <h2 className="font-editorial text-2xl font-medium text-stone-900 flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[#1c4d32]" />
-            Usage & Cost Analytics
+            Usage & Cost
           </h2>
-          <p className="text-xs text-stone-600 mt-1">
-            Real-time aggregated token throughput, request volume, and model expenditure telemetry.
-          </p>
         </div>
 
         <div className="flex items-center gap-3">
